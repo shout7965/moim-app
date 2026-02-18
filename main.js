@@ -1,88 +1,107 @@
-const apiKeyInput = document.getElementById('apiKeyInput');
-const apiSaveBtn  = document.getElementById('apiSaveBtn');
-const apiToggleBtn = document.getElementById('apiToggleBtn');
-const apiSection  = document.getElementById('apiSection');
+// ===== Toast Notifications =====
+const toastContainer = (() => {
+  const el = document.createElement('div');
+  el.className = 'toast-container';
+  document.body.appendChild(el);
+  return el;
+})();
 
-const searchInput = document.getElementById('searchInput');
-const searchBtn   = document.getElementById('searchBtn');
-const resultsEl   = document.getElementById('results');
-
-let apiKey = localStorage.getItem('yt_api_key') || '';
-
-if (apiKey) {
-  apiKeyInput.value = apiKey;
+export function showToast(message, type = 'info', duration = 3000) {
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  const icons = { info: 'ℹ️', success: '✅', error: '❌' };
+  toast.innerHTML = `<span>${icons[type] || ''}</span><span>${message}</span>`;
+  toastContainer.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity 0.3s';
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
 }
 
-apiToggleBtn.addEventListener('click', () => {
-  apiSection.classList.toggle('hidden');
-});
+// ===== Auth Guard =====
+// Pages that require login should call requireAuth() on load.
+export async function requireAuth() {
+  const { auth, db } = await import('./js/firebase-config.js');
+  const { onAuthStateChanged } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+  const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
 
-apiSaveBtn.addEventListener('click', () => {
-  const key = apiKeyInput.value.trim();
-  if (!key) { alert('API 키를 입력해주세요.'); return; }
-  apiKey = key;
-  localStorage.setItem('yt_api_key', key);
-  apiSection.classList.add('hidden');
-});
-
-searchBtn.addEventListener('click', search);
-searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
-
-async function search() {
-  const query = searchInput.value.trim();
-  if (!query) return;
-
-  if (!apiKey) {
-    resultsEl.innerHTML = '<div class="empty-state error">⚙ 버튼을 눌러 API 키를 먼저 설정해주세요.</div>';
-    return;
-  }
-
-  resultsEl.innerHTML = '<div class="loading"><span class="spinner"></span> 검색 중...</div>';
-
-  try {
-    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=10&key=${apiKey}`;
-    const res  = await fetch(url);
-    const data = await res.json();
-
-    if (data.error) {
-      resultsEl.innerHTML = `<div class="empty-state error">오류: ${data.error.message}</div>`;
-      return;
-    }
-
-    if (!data.items || data.items.length === 0) {
-      resultsEl.innerHTML = '<div class="empty-state">검색 결과가 없습니다.</div>';
-      return;
-    }
-
-    renderResults(data.items);
-  } catch {
-    resultsEl.innerHTML = '<div class="empty-state error">네트워크 오류가 발생했습니다.</div>';
-  }
-}
-
-function renderResults(items) {
-  resultsEl.innerHTML = `<div class="results-count">결과 ${items.length}개</div>`;
-
-  items.forEach(item => {
-    const videoId   = item.id.videoId;
-    const title     = item.snippet.title;
-    const channel   = item.snippet.channelTitle;
-    const thumb     = item.snippet.thumbnails.medium.url;
-    const ytUrl     = `https://www.youtube.com/watch?v=${videoId}`;
-
-    const a = document.createElement('a');
-    a.href   = ytUrl;
-    a.target = '_blank';
-    a.rel    = 'noopener noreferrer';
-    a.className = 'result-item';
-    a.innerHTML = `
-      <img class="result-thumb" src="${thumb}" alt="" />
-      <div class="result-info">
-        <div class="result-title">${title}</div>
-        <div class="result-channel">${channel}</div>
-      </div>
-      <span class="result-arrow">→</span>
-    `;
-    resultsEl.appendChild(a);
+  return new Promise((resolve, reject) => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      unsub();
+      if (!user) {
+        window.location.href = '/index.html';
+        reject(new Error('Not authenticated'));
+        return;
+      }
+      // Ensure user doc exists
+      const snap = await getDoc(doc(db, 'users', user.uid));
+      if (!snap.exists()) {
+        window.location.href = '/index.html';
+        reject(new Error('No user doc'));
+        return;
+      }
+      resolve({ user, profile: snap.data() });
+    });
   });
+}
+
+// ===== Navigation Helper =====
+export function navigateTo(path) {
+  window.location.href = path;
+}
+
+// ===== Format Helpers =====
+export function formatDate(ts) {
+  if (!ts) return '';
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', weekday: 'short' });
+}
+
+export function formatTime(ts) {
+  if (!ts) return '';
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+}
+
+export function formatDateTime(ts) {
+  return `${formatDate(ts)} ${formatTime(ts)}`;
+}
+
+// ===== Loading Screen =====
+export function showLoading(msg = '로딩 중...') {
+  const existing = document.getElementById('loading-screen');
+  if (existing) return;
+  const el = document.createElement('div');
+  el.id = 'loading-screen';
+  el.className = 'loading-screen';
+  el.innerHTML = `<div class="spinner"></div><span style="color:var(--text2);font-size:0.85rem">${msg}</span>`;
+  document.body.appendChild(el);
+}
+
+export function hideLoading() {
+  document.getElementById('loading-screen')?.remove();
+}
+
+// ===== Copy to Clipboard =====
+export async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // fallback
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+    return true;
+  }
+}
+
+// ===== Get URL Params =====
+export function getParam(key) {
+  return new URLSearchParams(window.location.search).get(key);
 }

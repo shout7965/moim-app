@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>약속 만들기 - 모임</title>
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    #map { height: 220px; border-radius: var(--radius); overflow: hidden; }
+    .friend-check-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border-radius: var(--radius-sm);
+      border: 2px solid var(--border); cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .friend-check-item.selected { border-color: var(--accent); background: rgba(108,99,255,0.08); }
+    .friend-check-item .avatar { flex-shrink: 0; }
+    .place-results {
+      max-height: 200px; overflow-y: auto;
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--bg3);
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="page-header">
+      <button class="btn-icon-round" onclick="history.back()">←</button>
+      <h1>약속 만들기</h1>
+    </div>
+
+    <div class="page-content pb-safe">
+      <!-- 약속 제목 -->
+      <div class="input-group">
+        <label class="input-label">약속 이름</label>
+        <input class="input" id="titleInput" placeholder="예: 강남역 점심" maxlength="30" />
+      </div>
+
+      <!-- 날짜/시간 -->
+      <div class="input-group">
+        <label class="input-label">날짜 & 시간</label>
+        <input class="input" id="dateTimeInput" type="datetime-local" />
+      </div>
+
+      <!-- 장소 선택 -->
+      <div class="input-group">
+        <label class="input-label">장소</label>
+        <div class="input-row">
+          <input class="input" id="placeSearch" placeholder="장소 검색..." />
+          <button class="btn btn-secondary btn-sm" id="searchPlaceBtn" style="flex-shrink:0;white-space:nowrap">검색</button>
+        </div>
+      </div>
+
+      <!-- 검색 결과 -->
+      <div class="place-results hidden" id="placeResults"></div>
+
+      <!-- 선택된 장소 표시 -->
+      <div id="selectedPlace" class="hidden">
+        <div class="card-sm flex-between">
+          <div>
+            <div class="font-bold text-sm" id="placeName">-</div>
+            <div class="text-xs text-muted" id="placeAddr">-</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="clearPlaceBtn">변경</button>
+        </div>
+        <div id="map"></div>
+      </div>
+
+      <!-- 친구 초대 -->
+      <div class="input-group" style="margin-top:4px">
+        <label class="input-label">친구 초대 <span class="text-muted">(선택)</span></label>
+        <div id="friendCheckList">
+          <div class="text-sm text-muted">친구를 먼저 추가하세요 →
+            <a href="/pages/friends.html" style="color:var(--accent2)">친구 관리</a>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-block" id="createBtn" style="margin-top:8px">약속 만들기</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireAuth }    from '/main.js';
+    import { showToast }      from '/main.js';
+    import { initMap, setMarker, searchPlaces } from '/js/kakaomap.js';
+    import { createMeeting, inviteMember, getFriends } from '/js/db.js';
+    import { WORKER_URL }     from '/js/firebase-config.js';
+    import { Timestamp }      from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+    let myUid, myProfile;
+    let selectedPlace = null;
+    let selectedFriends = new Set();
+
+    try {
+      const s = await requireAuth();
+      myUid = s.user.uid; myProfile = s.profile;
+    } catch { location.href = '/index.html'; }
+
+    // 기본 날짜: 1시간 뒤
+    const defaultDt = new Date(Date.now() + 3600_000);
+    defaultDt.setSeconds(0, 0);
+    document.getElementById('dateTimeInput').value =
+      defaultDt.toISOString().slice(0, 16);
+
+    // 장소 검색
+    document.getElementById('searchPlaceBtn').addEventListener('click', doSearch);
+    document.getElementById('placeSearch').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+
+    async function doSearch() {
+      const q = document.getElementById('placeSearch').value.trim();
+      if (!q) return;
+      document.getElementById('searchPlaceBtn').textContent = '...';
+      try {
+        const results = await searchPlaces(q);
+        renderPlaceResults(results);
+      } catch (e) {
+        showToast('장소 검색 실패: ' + e.message, 'error');
+      } finally {
+        document.getElementById('searchPlaceBtn').textContent = '검색';
+      }
+    }
+
+    function renderPlaceResults(results) {
+      const el = document.getElementById('placeResults');
+      if (!results.length) {
+        el.innerHTML = '<div class="text-sm text-muted" style="padding:12px">결과가 없습니다.</div>';
+        el.classList.remove('hidden');
+        return;
+      }
+      el.classList.remove('hidden');
+      el.innerHTML = results.slice(0, 8).map((r, i) => `
+        <div class="place-result-item" data-i="${i}">
+          <div class="place-result-info">
+            <div class="place-result-name">${r.name}</div>
+            <div class="place-result-addr">${r.address}</div>
+          </div>
+        </div>`).join('');
+
+      el.querySelectorAll('.place-result-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const idx = parseInt(item.dataset.i);
+          selectPlace(results[idx]);
+          el.classList.add('hidden');
+        });
+      });
+    }
+
+    async function selectPlace(place) {
+      selectedPlace = place;
+      document.getElementById('placeName').textContent = place.name;
+      document.getElementById('placeAddr').textContent = place.address;
+      document.getElementById('selectedPlace').classList.remove('hidden');
+      await initMap('map', { lat: place.lat, lng: place.lng, level: 3 });
+      setMarker(place.lat, place.lng, place.name);
+    }
+
+    document.getElementById('clearPlaceBtn').addEventListener('click', () => {
+      selectedPlace = null;
+      document.getElementById('selectedPlace').classList.add('hidden');
+      document.getElementById('placeSearch').value = '';
+    });
+
+    // 친구 목록 로드
+    const friends = await getFriends(myProfile.friends || []);
+    const friendList = document.getElementById('friendCheckList');
+    if (friends.length) {
+      friendList.innerHTML = friends.map(f => `
+        <div class="friend-check-item" data-uid="${f.uid}">
+          <div class="avatar">${f.profileImg ? `<img src="${f.profileImg}">` : f.nickname[0]}</div>
+          <span class="text-sm font-bold">${f.nickname}</span>
+        </div>`).join('');
+
+      friendList.querySelectorAll('.friend-check-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const uid = item.dataset.uid;
+          if (selectedFriends.has(uid)) {
+            selectedFriends.delete(uid);
+            item.classList.remove('selected');
+          } else {
+            selectedFriends.add(uid);
+            item.classList.add('selected');
+          }
+        });
+      });
+    }
+
+    // 약속 만들기
+    document.getElementById('createBtn').addEventListener('click', async () => {
+      const title    = document.getElementById('titleInput').value.trim();
+      const dateStr  = document.getElementById('dateTimeInput').value;
+
+      if (!title)       { showToast('약속 이름을 입력하세요', 'error'); return; }
+      if (!selectedPlace) { showToast('장소를 선택하세요', 'error'); return; }
+      if (!dateStr)     { showToast('날짜와 시간을 선택하세요', 'error'); return; }
+
+      const createBtn = document.getElementById('createBtn');
+      createBtn.disabled = true;
+      createBtn.textContent = '만드는 중...';
+
+      try {
+        const scheduledAt = Timestamp.fromDate(new Date(dateStr));
+        const meetingId   = await createMeeting({
+          title, hostId: myUid,
+          place: { name: selectedPlace.name, address: selectedPlace.address, lat: selectedPlace.lat, lng: selectedPlace.lng },
+          scheduledAt,
+        });
+
+        // 호스트를 멤버로 추가
+        await inviteMember(meetingId, myUid, myProfile.nickname, myProfile.profileImg, { title });
+        // 수락 상태로 변경
+        const { setMember } = await import('/js/db.js');
+        await setMember(meetingId, myUid, { status: 'accepted' });
+
+        // 초대된 친구들 추가 + FCM 알림
+        await Promise.all([...selectedFriends].map(async (uid) => {
+          const f = friends.find(fr => fr.uid === uid);
+          if (!f) return;
+          await inviteMember(meetingId, uid, f.nickname, f.profileImg, { title });
+          // FCM 알림 (fcmToken이 있을 때만)
+          if (f.fcmToken) {
+            await fetch(`${WORKER_URL}/api/notify`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                token: f.fcmToken,
+                title: '📅 약속 초대',
+                body:  `${myProfile.nickname}님이 "${title}" 약속에 초대했습니다`,
+                data:  { meetingId, url: `/pages/meeting.html?id=${meetingId}` },
+              }),
+            }).catch(console.warn);
+          }
+        }));
+
+        showToast('약속이 만들어졌습니다!', 'success');
+        location.href = `/pages/meeting.html?id=${meetingId}`;
+      } catch (e) {
+        console.error(e);
+        showToast('약속 만들기 실패: ' + e.message, 'error');
+        createBtn.disabled = false;
+        createBtn.textContent = '약속 만들기';
+      }
+    });
+  </script>
+</body>
+</html>

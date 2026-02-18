@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>홈 - 모임</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="page page-with-nav">
+    <div class="page-header">
+      <h1>모임</h1>
+      <div id="profileArea" style="display:flex;align-items:center;gap:8px">
+        <div class="avatar" id="myAvatar">?</div>
+        <button class="btn btn-secondary btn-sm" id="logoutBtn" style="display:none">로그아웃</button>
+      </div>
+    </div>
+
+    <div class="page-content" style="padding-top:8px">
+      <!-- 예정 약속 -->
+      <div class="flex-between">
+        <div class="section-title">예정된 약속</div>
+        <button class="btn btn-primary btn-sm" onclick="location.href='/pages/create-meeting.html'">+ 만들기</button>
+      </div>
+
+      <div id="pendingList">
+        <div class="empty-state">
+          <div class="empty-state-icon">📅</div>
+          <div class="empty-state-title">예정된 약속이 없어요</div>
+          <div class="empty-state-sub">친구들과 새 약속을 만들어보세요</div>
+        </div>
+      </div>
+
+      <!-- 지난 약속 -->
+      <div class="section-title" style="margin-top:8px">지난 약속</div>
+      <div id="doneList">
+        <div class="text-sm text-muted" style="padding:8px 0">아직 완료된 약속이 없습니다.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 하단 네비게이션 -->
+  <nav class="bottom-nav">
+    <div class="nav-items">
+      <button class="nav-item active">
+        <span class="nav-icon">🏠</span><span>홈</span>
+      </button>
+      <button class="nav-item" onclick="location.href='/pages/create-meeting.html'">
+        <span class="nav-icon">➕</span><span>약속</span>
+      </button>
+      <button class="nav-item" onclick="location.href='/pages/friends.html'">
+        <span class="nav-icon">👥</span><span>친구</span>
+      </button>
+    </div>
+  </nav>
+
+  <script type="module">
+    import { requireAuth }       from '/main.js';
+    import { showToast, formatDateTime } from '/main.js';
+    import { subscribeMyMeetings } from '/js/db.js';
+    import { initFCM, setupForegroundMessages } from '/js/fcm.js';
+    import { signOut } from '/js/auth.js';
+
+    let myUid, myProfile;
+    try {
+      const s = await requireAuth();
+      myUid = s.user.uid; myProfile = s.profile;
+    } catch { location.href = '/index.html'; }
+
+    // 프로필 표시
+    const avatar = document.getElementById('myAvatar');
+    if (myProfile.profileImg) {
+      avatar.innerHTML = `<img src="${myProfile.profileImg}" alt="">`;
+    } else {
+      avatar.textContent = myProfile.nickname?.[0] || '?';
+    }
+    avatar.addEventListener('click', () => {
+      document.getElementById('logoutBtn').style.display =
+        document.getElementById('logoutBtn').style.display === 'none' ? '' : 'none';
+    });
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      if (confirm('로그아웃 하시겠습니까?')) await signOut();
+    });
+
+    // FCM 초기화
+    initFCM(myUid).catch(console.warn);
+    setupForegroundMessages();
+
+    // 약속 목록 실시간 구독
+    const pendingEl = document.getElementById('pendingList');
+    const doneEl    = document.getElementById('doneList');
+
+    subscribeMyMeetings(myUid, (meetings) => {
+      const pending = meetings.filter(m => m.status !== 'done');
+      const done    = meetings.filter(m => m.status === 'done');
+
+      if (!pending.length) {
+        pendingEl.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📅</div>
+            <div class="empty-state-title">예정된 약속이 없어요</div>
+            <div class="empty-state-sub">친구들과 새 약속을 만들어보세요</div>
+          </div>`;
+      } else {
+        pendingEl.innerHTML = pending.map(m => renderMeetingCard(m)).join('');
+        pendingEl.querySelectorAll('.meeting-card').forEach(el => {
+          el.addEventListener('click', () => {
+            location.href = `/pages/meeting.html?id=${el.dataset.id}`;
+          });
+        });
+      }
+
+      if (!done.length) {
+        doneEl.innerHTML = '<div class="text-sm text-muted" style="padding:8px 0">아직 완료된 약속이 없습니다.</div>';
+      } else {
+        doneEl.innerHTML = done.slice(0, 5).map(m => renderMeetingCard(m)).join('');
+      }
+    });
+
+    function renderMeetingCard(m) {
+      const badgeMap = {
+        pending: ['badge-pending', '예정'],
+        active:  ['badge-active',  '진행중'],
+        done:    ['badge-done',    '완료'],
+      };
+      const [badgeClass, badgeText] = badgeMap[m.status] || badgeMap.pending;
+      const isHost = m.hostId === myUid;
+
+      return `
+        <div class="meeting-card" data-id="${m.id}">
+          <div class="meeting-card-top">
+            <div class="meeting-title">${m.title}</div>
+            <span class="meeting-badge ${badgeClass}">${badgeText}</span>
+          </div>
+          <div class="meeting-meta">
+            <div class="meeting-meta-row">
+              <span class="icon">📍</span>
+              <span>${m.place?.name || '-'}</span>
+            </div>
+            <div class="meeting-meta-row">
+              <span class="icon">🕐</span>
+              <span>${formatDateTime(m.scheduledAt)}</span>
+            </div>
+            ${isHost ? '<div class="meeting-meta-row"><span class="icon">👑</span><span class="text-accent">내가 만든 약속</span></div>' : ''}
+          </div>
+        </div>`;
+    }
+  </script>
+</body>
+</html>

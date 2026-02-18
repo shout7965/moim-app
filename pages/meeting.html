@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>약속 상세 - 모임</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="page">
+    <div class="page-header">
+      <button class="btn-icon-round" onclick="location.href='/pages/home.html'">←</button>
+      <h1 id="meetingTitle">약속 상세</h1>
+      <button class="btn-icon-round" id="shareBtn" title="공유">↗</button>
+    </div>
+
+    <div class="page-content pb-safe">
+      <!-- 약속 정보 -->
+      <div class="card">
+        <div class="meeting-meta" style="gap:8px">
+          <div class="meeting-meta-row">
+            <span class="icon">📍</span>
+            <div>
+              <div class="font-bold text-sm" id="placeName">-</div>
+              <div class="text-xs text-muted" id="placeAddr">-</div>
+            </div>
+          </div>
+          <div class="meeting-meta-row">
+            <span class="icon">🕐</span>
+            <span id="scheduledAt" class="text-sm">-</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 내 상태 -->
+      <div id="myStatusArea"></div>
+
+      <!-- 이동수단 선택 (수락한 경우만) -->
+      <div id="transportArea" class="hidden">
+        <div class="section-title">이동수단</div>
+        <div class="transport-grid">
+          <button class="transport-btn" data-transport="walk">
+            <span class="transport-icon">🚶</span><span>도보</span>
+          </button>
+          <button class="transport-btn" data-transport="bike">
+            <span class="transport-icon">🚲</span><span>자전거</span>
+          </button>
+          <button class="transport-btn" data-transport="transit">
+            <span class="transport-icon">🚌</span><span>대중교통</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 실시간 추적 시작 버튼 -->
+      <div id="trackingBtnArea" class="hidden">
+        <button class="btn btn-primary btn-block" id="startTrackingBtn">
+          📍 실시간 위치 공유 시작
+        </button>
+      </div>
+
+      <!-- 참여자 목록 -->
+      <div class="section-title">참여자</div>
+      <div id="memberList"></div>
+
+      <!-- 호스트 전용: 약속 삭제 -->
+      <div id="hostActions" class="hidden" style="margin-top:8px">
+        <button class="btn btn-danger btn-block" id="deleteMeetingBtn">약속 삭제</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireAuth, formatDateTime, showToast, getParam } from '/main.js';
+    import { getMeeting, getMember, setMember, subscribeMembers, updateMeeting } from '/js/db.js';
+    import { shareMeetingLink } from '/js/invite.js';
+    import { WORKER_URL } from '/js/firebase-config.js';
+    import { doc, deleteDoc, collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+    import { db } from '/js/firebase-config.js';
+
+    let myUid, myProfile, meeting, myMember;
+    const meetingId = getParam('id');
+    if (!meetingId) { location.href = '/pages/home.html'; }
+
+    try {
+      const s = await requireAuth();
+      myUid = s.user.uid; myProfile = s.profile;
+    } catch { location.href = '/index.html'; }
+
+    // 약속 정보 로드
+    meeting = await getMeeting(meetingId);
+    if (!meeting) { showToast('약속을 찾을 수 없습니다', 'error'); location.href = '/pages/home.html'; }
+
+    myMember = await getMember(meetingId, myUid);
+
+    // 헤더 렌더링
+    document.getElementById('meetingTitle').textContent = meeting.title;
+    document.getElementById('placeName').textContent    = meeting.place?.name || '-';
+    document.getElementById('placeAddr').textContent    = meeting.place?.address || '';
+    document.getElementById('scheduledAt').textContent  = formatDateTime(meeting.scheduledAt);
+
+    // 공유
+    document.getElementById('shareBtn').addEventListener('click', () =>
+      shareMeetingLink(meetingId, meeting.title));
+
+    // 내 상태 UI
+    renderMyStatus();
+
+    function renderMyStatus() {
+      const area = document.getElementById('myStatusArea');
+      const transport = document.getElementById('transportArea');
+      const trackingArea = document.getElementById('trackingBtnArea');
+
+      if (!myMember) {
+        area.innerHTML = `
+          <div class="card-sm" style="text-align:center">
+            <div class="text-sm text-muted">이 약속에 참여 중이 아닙니다.</div>
+          </div>`;
+        return;
+      }
+
+      const statusMap = {
+        invited:  '초대받았어요',
+        accepted: '참여 확정',
+        declined: '참여 거절',
+        arrived:  '도착 완료',
+      };
+
+      area.innerHTML = `
+        <div class="card-sm flex-between">
+          <div class="text-sm">내 상태: <span class="font-bold">${statusMap[myMember.status] || '-'}</span></div>
+          <div style="display:flex;gap:6px" id="statusBtns"></div>
+        </div>`;
+
+      const btns = document.getElementById('statusBtns');
+      if (myMember.status === 'invited') {
+        btns.innerHTML = `
+          <button class="btn btn-success btn-sm" id="acceptBtn">수락</button>
+          <button class="btn btn-danger btn-sm" id="declineBtn">거절</button>`;
+        btns.querySelector('#acceptBtn').addEventListener('click', () => changeStatus('accepted'));
+        btns.querySelector('#declineBtn').addEventListener('click', () => changeStatus('declined'));
+      }
+
+      // 수락한 경우 이동수단 + 추적 버튼
+      if (myMember.status === 'accepted' || myMember.status === 'arrived') {
+        transport.classList.remove('hidden');
+        if (myMember.transport) {
+          document.querySelectorAll('.transport-btn').forEach(b => {
+            b.classList.toggle('selected', b.dataset.transport === myMember.transport);
+          });
+        }
+        if (meeting.status !== 'done') {
+          trackingArea.classList.remove('hidden');
+        }
+      }
+    }
+
+    async function changeStatus(status) {
+      await setMember(meetingId, myUid, { status });
+      myMember.status = status;
+      renderMyStatus();
+
+      // 약속이 active 상태가 아니면 active로 변경
+      if (status === 'accepted' && meeting.status === 'pending') {
+        await updateMeeting(meetingId, { status: 'active' });
+      }
+
+      showToast(status === 'accepted' ? '약속을 수락했습니다!' : '약속을 거절했습니다.', 'info');
+    }
+
+    // 이동수단 선택
+    document.querySelectorAll('.transport-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const t = btn.dataset.transport;
+        document.querySelectorAll('.transport-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        await setMember(meetingId, myUid, { transport: t });
+        myMember.transport = t;
+        showToast('이동수단이 저장됐습니다', 'success');
+      });
+    });
+
+    // 추적 시작
+    document.getElementById('startTrackingBtn')?.addEventListener('click', () => {
+      location.href = `/pages/tracking.html?id=${meetingId}`;
+    });
+
+    // 참여자 목록 실시간 구독
+    subscribeMembers(meetingId, (members) => {
+      const el = document.getElementById('memberList');
+      if (!members.length) {
+        el.innerHTML = '<div class="text-sm text-muted">아직 참여자가 없습니다.</div>';
+        return;
+      }
+      el.innerHTML = members.map(m => {
+        const statusDotMap = {
+          invited:  'dot-yellow', accepted: 'dot-green',
+          declined: 'dot-gray',   arrived:  'dot-green dot-pulse',
+        };
+        const statusTextMap = {
+          invited: '초대됨', accepted: '참여확정',
+          declined: '거절', arrived: '도착완료',
+        };
+        return `
+          <div class="friend-item">
+            <div class="avatar">
+              ${m.profileImg ? `<img src="${m.profileImg}">` : (m.nickname?.[0] || '?')}
+            </div>
+            <div class="friend-info">
+              <div class="friend-name">${m.nickname} ${m.uid === myUid ? '(나)' : ''}</div>
+              <div class="text-xs text-muted">${m.transport ? { walk:'도보', bike:'자전거', transit:'대중교통' }[m.transport] + ' · ' : ''}${statusTextMap[m.status] || '-'}</div>
+            </div>
+            <div class="status-dot ${statusDotMap[m.status] || 'dot-gray'}"></div>
+          </div>`;
+      }).join('');
+    });
+
+    // 호스트 전용 기능
+    if (meeting.hostId === myUid) {
+      document.getElementById('hostActions').classList.remove('hidden');
+      document.getElementById('deleteMeetingBtn').addEventListener('click', async () => {
+        if (!confirm('약속을 삭제하시겠습니까?')) return;
+        try {
+          // 멤버 서브컬렉션 삭제
+          const memberSnap = await getDocs(collection(db, 'meetings', meetingId, 'members'));
+          await Promise.all(memberSnap.docs.map(d => deleteDoc(d.ref)));
+          await deleteDoc(doc(db, 'meetings', meetingId));
+          showToast('약속이 삭제되었습니다', 'success');
+          location.href = '/pages/home.html';
+        } catch (e) {
+          showToast('삭제 실패: ' + e.message, 'error');
+        }
+      });
+    }
+  </script>
+</body>
+</html>

@@ -2,46 +2,168 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>YouTube 검색</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a0f" />
+  <title>모임 - 친구와 약속</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <div class="card">
-    <div class="header">
-      <div class="title-wrap">
-        <h1><span class="logo-dot"></span>YouTube 검색</h1>
-        <p class="subtitle">곡 제목을 입력하면 관련 영상 목록을 보여드립니다.</p>
-      </div>
-      <button class="btn-icon" id="apiToggleBtn" title="API 키 설정">⚙</button>
-    </div>
+  <div class="login-page" id="loginPage">
+    <div class="login-logo">🤝</div>
+    <h1 class="login-title">모임</h1>
+    <p class="login-subtitle">친구들과 약속 장소와 시간을 정하고<br>실시간으로 만나요</p>
 
-    <div class="api-section hidden" id="apiSection">
-      <div class="api-label">YouTube Data API v3 키</div>
-      <div class="api-row">
-        <input type="password" id="apiKeyInput" class="api-input" placeholder="API 키를 붙여넣으세요..." />
-        <button class="btn-save" id="apiSaveBtn">저장</button>
+    <div class="login-features">
+      <div class="login-feature">
+        <span class="login-feature-icon">📍</span>
+        <span>실시간 위치 공유로 친구들이 어디쯤 오는지 확인</span>
       </div>
-      <p class="api-note">
-        API 키가 없으시면
-        <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a>
-        에서 발급받으세요. 키는 이 브라우저에만 저장됩니다.
-      </p>
-    </div>
-
-    <div class="search-area">
-      <div class="search-row">
-        <input type="text" id="searchInput" class="search-input" placeholder="곡 제목을 입력하세요..." />
-        <button class="btn-search" id="searchBtn">검색</button>
+      <div class="login-feature">
+        <span class="login-feature-icon">⏱</span>
+        <span>이동수단별 도착 예정 시간 자동 계산</span>
+      </div>
+      <div class="login-feature">
+        <span class="login-feature-icon">🔔</span>
+        <span>약속 초대 및 도착 알림 푸시 알림</span>
       </div>
     </div>
 
-    <div class="results" id="results">
-      <div class="empty-state">검색어를 입력하고 검색 버튼을 눌러주세요.</div>
-    </div>
+    <button class="btn-kakao" id="kakaoLoginBtn">
+      <svg viewBox="0 0 24 24" fill="#191919">
+        <path d="M12 3C6.48 3 2 6.48 2 10.8c0 2.75 1.65 5.17 4.14 6.59L5.1 21l4.27-2.37C10.12 18.87 11.05 19 12 19c5.52 0 10-3.48 10-8s-4.48-8-10-8z"/>
+      </svg>
+      카카오로 시작하기
+    </button>
+    <p class="login-note">로그인 시 닉네임과 프로필 사진에 동의하게 됩니다.</p>
   </div>
 
-  <script src="main.js"></script>
+  <!-- 로딩 중 표시 -->
+  <div class="loading-screen hidden" id="loadingScreen">
+    <div class="spinner"></div>
+    <span style="color:var(--text2);font-size:0.85rem">로그인 중...</span>
+  </div>
+
+  <script type="module">
+    import { KAKAO_JS_KEY, WORKER_URL, auth, db } from '/js/firebase-config.js';
+    import { signInWithCustomToken, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+    import { doc, setDoc, getDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+    import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+
+    const loginPage    = document.getElementById('loginPage');
+    const loadingScreen = document.getElementById('loadingScreen');
+    const kakaoLoginBtn = document.getElementById('kakaoLoginBtn');
+
+    function showLoading() {
+      loginPage.classList.add('hidden');
+      loadingScreen.classList.remove('hidden');
+    }
+
+    // 이미 로그인된 경우 홈으로 이동
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (snap.exists()) {
+          window.location.href = '/pages/home.html';
+          return;
+        }
+      }
+      loginPage.classList.remove('hidden');
+    });
+
+    // 카카오 SDK 로드 (Promise로 감싸서 완료 대기)
+    const kakaoReady = new Promise((resolve) => {
+      const kakaoScript = document.createElement('script');
+      kakaoScript.src = 'https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js';
+      kakaoScript.onload = () => {
+        if (!Kakao.isInitialized()) Kakao.init(KAKAO_JS_KEY);
+        resolve();
+      };
+      kakaoScript.onerror = () => resolve(); // 로드 실패해도 진행
+      document.head.appendChild(kakaoScript);
+    });
+
+    kakaoLoginBtn.addEventListener('click', async () => {
+      await kakaoReady; // SDK 로드 완료까지 대기
+      if (!window.Kakao?.isInitialized()) {
+        alert('카카오 SDK 초기화 실패. 페이지를 새로고침 후 다시 시도해주세요.');
+        return;
+      }
+      // 리다이렉트 방식 (모바일 호환성)
+      const redirectUri = `${location.origin}/pages/kakao-callback.html`;
+      Kakao.Auth.authorize({ redirectUri });
+    });
+
+    // 리다이렉트 방식으로 돌아온 경우 sessionStorage 처리
+    const params = new URLSearchParams(location.search);
+    if (params.get('kakao_callback') === '1') {
+      const code        = sessionStorage.getItem('kakao_code');
+      const redirectUri = sessionStorage.getItem('kakao_redirect_uri');
+      if (code) {
+        showLoading();
+        window.dispatchEvent(new MessageEvent('message', {
+          data: { type: 'kakao-code', code, redirectUri },
+        }));
+      }
+    }
+
+    // 카카오 콜백 처리 (callback.html에서 postMessage로 전달)
+    window.addEventListener('message', async (e) => {
+      if (e.data?.type !== 'kakao-code') return;
+      showLoading();
+
+      try {
+        const { code, redirectUri } = e.data;
+        // Worker를 통해 카카오 토큰 교환
+        const res = await fetch(`${WORKER_URL}/api/kakao-token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, redirectUri }),
+        });
+        const kakaoProfile = await res.json();
+        if (kakaoProfile.error) throw new Error(kakaoProfile.error);
+
+        // Firebase Anonymous Auth
+        const cred = await signInAnonymously(auth);
+        const uid  = cred.user.uid;
+
+        // Firestore 사용자 문서 생성/업데이트
+        const userRef  = doc(db, 'users', uid);
+        const existing = await getDoc(userRef);
+
+        if (!existing.exists()) {
+          const inviteCode = generateInviteCode();
+          await setDoc(userRef, {
+            kakaoId:    kakaoProfile.kakaoId,
+            nickname:   kakaoProfile.nickname,
+            profileImg: kakaoProfile.profileImg || null,
+            inviteCode,
+            friends:    [],
+            fcmToken:   null,
+            createdAt:  serverTimestamp(),
+          });
+        } else {
+          await setDoc(userRef, {
+            kakaoId:    kakaoProfile.kakaoId,
+            nickname:   kakaoProfile.nickname,
+            profileImg: kakaoProfile.profileImg || null,
+            updatedAt:  serverTimestamp(),
+          }, { merge: true });
+        }
+
+        window.location.href = '/pages/home.html';
+      } catch (error) {
+        console.error('Login error:', error);
+        loadingScreen.classList.add('hidden');
+        loginPage.classList.remove('hidden');
+        alert(`로그인 실패: ${error.message}`);
+      }
+    });
+
+    function generateInviteCode() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    }
+  </script>
 </body>
 </html>

@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===== Users =====
+    match /users/{uid} {
+      // 본인만 읽기/쓰기, 친구 추가 시 타인이 쓰기 가능하도록 제한된 허용
+      allow read:  if request.auth != null;
+      allow create: if request.auth.uid == uid;
+      allow update: if request.auth.uid == uid
+        || (
+          // friends 배열 변경만 허용 (친구 추가/삭제)
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friends'])
+        );
+    }
+
+    // ===== Meetings =====
+    match /meetings/{meetingId} {
+      // 멤버이거나 호스트만 읽기
+      allow read: if request.auth != null
+        && (resource.data.hostId == request.auth.uid
+            || exists(/databases/$(database)/documents/meetings/$(meetingId)/members/$(request.auth.uid)));
+      // 생성은 인증된 사용자
+      allow create: if request.auth != null;
+      // 수정은 호스트만
+      allow update: if request.auth.uid == resource.data.hostId;
+      // 삭제는 호스트만
+      allow delete: if request.auth.uid == resource.data.hostId;
+
+      // ===== Members =====
+      match /members/{uid} {
+        // 같은 약속 멤버는 읽기 가능
+        allow read: if request.auth != null
+          && (exists(/databases/$(database)/documents/meetings/$(meetingId)/members/$(request.auth.uid))
+              || get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid);
+        // 생성: 호스트 또는 딥링크 진입자(본인 uid 일치)
+        allow create: if request.auth != null
+          && (request.auth.uid == uid
+              || get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid);
+        // 수정: 본인만
+        allow update: if request.auth.uid == uid;
+        // 삭제: 호스트만
+        allow delete: if get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid;
+      }
+    }
+
+    // ===== UserMeetings (인덱스) =====
+    match /userMeetings/{docId} {
+      allow read:  if request.auth != null && resource.data.uid == request.auth.uid;
+      allow write: if request.auth != null
+        && (request.resource.data.uid == request.auth.uid
+            || get(/databases/$(database)/documents/meetings/$(request.resource.data.meetingId)).data.hostId == request.auth.uid);
+    }
+  }
+}

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>실시간 추적 - 모임</title>
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    body { overflow: hidden; }
+    #map-full {
+      position: fixed; inset: 0;
+      z-index: 0;
+    }
+    .tracking-ui {
+      position: fixed;
+      left: 50%; transform: translateX(-50%);
+      width: 100%; max-width: 480px;
+      z-index: 10;
+      pointer-events: none;
+    }
+    .tracking-top {
+      top: 0;
+      background: linear-gradient(to bottom, rgba(10,10,15,0.95) 60%, transparent);
+      padding: 16px 20px 24px;
+      pointer-events: auto;
+    }
+    .tracking-bottom {
+      bottom: 0;
+      background: linear-gradient(to top, rgba(10,10,15,0.97) 70%, transparent);
+      padding: 20px 20px calc(20px + env(safe-area-inset-bottom, 0px));
+      pointer-events: auto;
+    }
+    .member-list-scroll {
+      display: flex; flex-direction: column; gap: 8px;
+      max-height: 260px; overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <!-- 지도 -->
+  <div id="map-full"></div>
+
+  <!-- 상단 UI -->
+  <div class="tracking-ui tracking-top">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="btn-icon-round" onclick="stopAndGoBack()">←</button>
+      <div style="flex:1">
+        <div class="font-bold" id="meetingTitleTrack">약속</div>
+        <div class="text-xs text-muted" id="placeNameTrack">-</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="status-dot dot-green dot-pulse"></div>
+        <span class="text-xs text-green">실시간</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 하단 UI -->
+  <div class="tracking-ui tracking-bottom">
+    <!-- ETA 목록 -->
+    <div class="section-title" style="margin-bottom:8px">도착 예정</div>
+    <div class="member-list-scroll" id="etaList">
+      <div class="text-sm text-muted">위치 정보 수신 중...</div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn btn-success" style="flex:1" id="arrivedBtn">
+        ✅ 도착 완료
+      </button>
+      <button class="btn btn-secondary btn-sm" id="centerBtn" title="내 위치로">📍</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireAuth, showToast, getParam, formatDateTime } from '/main.js';
+    import { getMeeting, getMember, setMember, subscribeMembers, updateMeeting } from '/js/db.js';
+    import { initMap, setMarker, addMemberMarker, centerOnMyLocation, getMap } from '/js/kakaomap.js';
+    import { startLocationTracking, stopLocationTracking } from '/js/location.js';
+    import { calcEta, etaLabel, etaClass } from '/js/eta.js';
+    import { WORKER_URL } from '/js/firebase-config.js';
+
+    let myUid, myProfile, meeting;
+    const meetingId = getParam('id');
+    if (!meetingId) { location.href = '/pages/home.html'; }
+
+    try {
+      const s = await requireAuth();
+      myUid = s.user.uid; myProfile = s.profile;
+    } catch { location.href = '/index.html'; }
+
+    meeting = await getMeeting(meetingId);
+    if (!meeting) { location.href = '/pages/home.html'; }
+
+    const myMember = await getMember(meetingId, myUid);
+    if (!myMember || myMember.status === 'declined') {
+      showToast('참여 확정된 멤버만 추적 화면을 사용할 수 있습니다', 'error');
+      location.href = `/pages/meeting.html?id=${meetingId}`;
+    }
+
+    // 상단 정보
+    document.getElementById('meetingTitleTrack').textContent = meeting.title;
+    document.getElementById('placeNameTrack').textContent    = meeting.place?.name || '-';
+
+    // 지도 초기화
+    const map = await initMap('map-full', {
+      lat: meeting.place?.lat || 37.5665,
+      lng: meeting.place?.lng || 126.978,
+      level: 4,
+    });
+
+    // 목적지 마커
+    if (meeting.place?.lat) {
+      setMarker(meeting.place.lat, meeting.place.lng, meeting.place.name);
+    }
+
+    // 멤버 마커 맵
+    const memberMarkers = {};
+    const COLORS = ['#6c63ff', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4'];
+
+    // 멤버 목록 실시간 구독 + ETA 업데이트
+    let memberColorMap = {};
+    let colorIndex = 0;
+
+    subscribeMembers(meetingId, (members) => {
+      // ETA 목록 렌더링
+      const etaEl = document.getElementById('etaList');
+      const active = members.filter(m => m.status === 'accepted' || m.status === 'arrived');
+
+      if (!active.length) {
+        etaEl.innerHTML = '<div class="text-sm text-muted">아직 위치 정보가 없습니다.</div>';
+        return;
+      }
+
+      etaEl.innerHTML = active.map(m => {
+        const isMe = m.uid === myUid;
+        const etaMin = m.eta;
+        const label  = m.status === 'arrived' ? '도착!' : etaLabel(etaMin);
+        const cls    = m.status === 'arrived' ? 'eta-arrived' : etaClass(etaMin);
+        const transport = { walk: '🚶', bike: '🚲', transit: '🚌' }[m.transport] || '❓';
+
+        // 지도 마커 업데이트
+        if (m.lat && m.lng) {
+          if (!memberColorMap[m.uid]) {
+            memberColorMap[m.uid] = COLORS[colorIndex++ % COLORS.length];
+          }
+          // 기존 마커 제거 후 새로 추가
+          if (memberMarkers[m.uid]) memberMarkers[m.uid].setMap(null);
+          memberMarkers[m.uid] = addMemberMarker(m.lat, m.lng, isMe ? '나' : m.nickname, memberColorMap[m.uid]);
+        }
+
+        return `
+          <div class="member-eta-card">
+            <div class="avatar" style="flex-shrink:0">
+              ${m.profileImg ? `<img src="${m.profileImg}">` : (m.nickname?.[0] || '?')}
+            </div>
+            <div class="member-eta-info">
+              <div class="member-eta-name">${m.nickname}${isMe ? ' (나)' : ''}</div>
+              <div class="member-eta-transport">${transport} ${m.transport ? { walk:'도보', bike:'자전거', transit:'대중교통' }[m.transport] : '이동수단 미선택'}</div>
+            </div>
+            <div class="eta-badge ${cls}">${label}</div>
+          </div>`;
+      }).join('');
+
+      // 모든 멤버 도착 확인 → 자동 완료
+      const allArrived = active.every(m => m.status === 'arrived');
+      if (allArrived && active.length > 0 && meeting.status !== 'done') {
+        updateMeeting(meetingId, { status: 'done' }).catch(console.warn);
+        showToast('모두 도착했습니다! 🎉', 'success', 5000);
+      }
+    });
+
+    // 내 위치 추적 시작
+    const transport = myMember?.transport || 'walk';
+    const destLat   = meeting.place?.lat;
+    const destLng   = meeting.place?.lng;
+
+    startLocationTracking(
+      meetingId, myUid,
+      (lat, lng) => {
+        // 내 마커는 지도에서 이미 subscribeMembers에서 처리
+        if (!memberColorMap[myUid]) memberColorMap[myUid] = COLORS[0];
+      },
+      async (lat, lng) => {
+        if (!destLat || !destLng) return null;
+        return calcEta(transport, lat, lng, destLat, destLng);
+      },
+    );
+
+    // 도착 완료
+    document.getElementById('arrivedBtn').addEventListener('click', async () => {
+      await setMember(meetingId, myUid, { status: 'arrived', eta: 0 });
+      stopLocationTracking();
+      showToast('도착 완료 처리되었습니다! ✅', 'success');
+      document.getElementById('arrivedBtn').disabled = true;
+      document.getElementById('arrivedBtn').textContent = '도착 완료됨';
+
+      // FCM 알림: 다른 멤버들에게 알림
+      // (생략: 서버사이드에서 처리하거나 여기서 각 멤버 토큰으로 발송)
+    });
+
+    // 내 위치로 이동
+    document.getElementById('centerBtn').addEventListener('click', async () => {
+      try {
+        await centerOnMyLocation();
+      } catch { showToast('위치를 가져올 수 없습니다', 'error'); }
+    });
+
+    function stopAndGoBack() {
+      stopLocationTracking();
+      location.href = `/pages/meeting.html?id=${meetingId}`;
+    }
+    window.stopAndGoBack = stopAndGoBack;
+
+    // 페이지 언로드 시 추적 중지
+    window.addEventListener('beforeunload', stopLocationTracking);
+  </script>
+</body>
+</html>

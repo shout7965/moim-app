@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>카카오 로그인</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="loading-screen">
+    <div class="spinner"></div>
+    <span style="color:var(--text2);font-size:0.85rem">카카오 로그인 처리 중...</span>
+  </div>
+  <script>
+    // 카카오 인가코드를 부모 창(index.html)에 전달
+    const params = new URLSearchParams(location.search);
+    const code   = params.get('code');
+    const error  = params.get('error');
+
+    if (error) {
+      // 로그인 취소 또는 오류
+      if (window.opener) {
+        window.opener.postMessage({ type: 'kakao-error', error }, location.origin);
+        window.close();
+      } else {
+        window.location.href = '/index.html';
+      }
+    } else if (code) {
+      const redirectUri = `${location.origin}/pages/kakao-callback.html`;
+      if (window.opener) {
+        // 팝업 방식
+        window.opener.postMessage({ type: 'kakao-code', code, redirectUri }, location.origin);
+        window.close();
+      } else {
+        // 리다이렉트 방식 - index.html로 이동 후 처리
+        sessionStorage.setItem('kakao_code', code);
+        sessionStorage.setItem('kakao_redirect_uri', redirectUri);
+        window.location.href = '/index.html?kakao_callback=1';
+      }
+    } else {
+      window.location.href = '/index.html';
+    }
+  </script>
+</body>
+</html>
