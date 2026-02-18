@@ -94,26 +94,10 @@
       Kakao.Auth.authorize({ redirectUri });
     });
 
-    // 리다이렉트 방식으로 돌아온 경우 sessionStorage 처리
-    const params = new URLSearchParams(location.search);
-    if (params.get('kakao_callback') === '1') {
-      const code        = sessionStorage.getItem('kakao_code');
-      const redirectUri = sessionStorage.getItem('kakao_redirect_uri');
-      if (code) {
-        showLoading();
-        window.dispatchEvent(new MessageEvent('message', {
-          data: { type: 'kakao-code', code, redirectUri },
-        }));
-      }
-    }
-
-    // 카카오 콜백 처리 (callback.html에서 postMessage로 전달)
-    window.addEventListener('message', async (e) => {
-      if (e.data?.type !== 'kakao-code') return;
+    async function handleKakaoCode(code, redirectUri) {
       showLoading();
 
       try {
-        const { code, redirectUri } = e.data;
         // Worker를 통해 카카오 토큰 교환
         const res = await fetch(`${WORKER_URL}/api/kakao-token`, {
           method: 'POST',
@@ -158,7 +142,26 @@
         loginPage.classList.remove('hidden');
         alert(`로그인 실패: ${error.message}`);
       }
+    }
+
+    // 카카오 콜백 처리 (callback.html에서 postMessage로 전달)
+    window.addEventListener('message', async (e) => {
+      if (e.data?.type !== 'kakao-code') return;
+      const { code, redirectUri } = e.data;
+      await handleKakaoCode(code, redirectUri);
     });
+
+    // 리다이렉트 방식으로 돌아온 경우 sessionStorage 처리
+    const params = new URLSearchParams(location.search);
+    if (params.get('kakao_callback') === '1') {
+      const code        = sessionStorage.getItem('kakao_code');
+      const redirectUri = sessionStorage.getItem('kakao_redirect_uri');
+      if (code) {
+        sessionStorage.removeItem('kakao_code');
+        sessionStorage.removeItem('kakao_redirect_uri');
+        await handleKakaoCode(code, redirectUri);
+      }
+    }
 
     function generateInviteCode() {
       const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
