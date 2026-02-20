@@ -119,16 +119,16 @@ export function centerOnMyLocation() {
   });
 }
 
-// 경로 폴리라인 그리기
-export function drawRoute(path, color = '#6c63ff') {
+// 경로 폴리라인 그리기 (straight=true면 점선으로 표시)
+export function drawRoute(path, color = '#6c63ff', straight = false) {
   clearRoute();
   if (!mapInstance || !path?.length) return;
   routePolyline = new kakao.maps.Polyline({
     path:           path.map(p => new kakao.maps.LatLng(p.lat, p.lng)),
-    strokeWeight:   5,
+    strokeWeight:   straight ? 3 : 5,
     strokeColor:    color,
-    strokeOpacity:  0.75,
-    strokeStyle:    'solid',
+    strokeOpacity:  straight ? 0.5 : 0.8,
+    strokeStyle:    straight ? 'shortdot' : 'solid',
   });
   routePolyline.setMap(mapInstance);
 }

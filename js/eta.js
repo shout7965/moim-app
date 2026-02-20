@@ -6,6 +6,7 @@ import { WORKER_URL } from './firebase-config.js';
 const SPEED = {
   walk:    5,   // km/h
   bike:    15,  // km/h
+  car:     40,  // km/h (시내 평균)
   transit: null, // API 계산
 };
 
@@ -43,8 +44,8 @@ async function calcTransitEta(fromLat, fromLng, toLat, toLng) {
     const data = await res.json();
     if (data.error) {
       console.warn('Transit ETA error:', data.error);
-      // 폴백: 직선 거리 기반 (40km/h 평균)
-      return Math.ceil((haversineKm(fromLat, fromLng, toLat, toLng) * 1.5 / 40) * 60);
+      // 폴백: 직선 거리 기반 (대중교통 평균 25km/h)
+      return Math.ceil((haversineKm(fromLat, fromLng, toLat, toLng) * 1.5 / 25) * 60);
     }
     return data.minutes;
   } catch (e) {

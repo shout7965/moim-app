@@ -134,7 +134,7 @@
 
       etaEl.innerHTML = trackable.map(m => {
         const isMe = m.uid === myUid;
-        const transport = { walk: '🚶', bike: '🚲', transit: '🚌' }[m.transport] || '❓';
+        const transport = { walk: '🚶', bike: '🚲', transit: '🚌', car: '🚗' }[m.transport] || '❓';
 
         let label, cls;
         if (m.status === 'arrived') {
@@ -161,7 +161,7 @@
             </div>
             <div class="member-eta-info">
               <div class="member-eta-name">${m.nickname}${isMe ? ' (나)' : ''}</div>
-              <div class="member-eta-transport">${transport} ${m.transport ? { walk:'도보', bike:'자전거', transit:'대중교통' }[m.transport] : '이동수단 미선택'}</div>
+              <div class="member-eta-transport">${transport} ${m.transport ? { walk:'도보', bike:'자전거', transit:'대중교통', car:'자가용' }[m.transport] : '이동수단 미선택'}</div>
             </div>
             <div class="eta-badge ${cls}">${label}</div>
           </div>`;
@@ -185,15 +185,23 @@
     let myLastLat = myMember?.lat || null;
     let myLastLng = myMember?.lng || null;
     let routeVisible = false;
-    const ROUTE_COLOR = { walk: '#22c55e', bike: '#06b6d4', transit: '#6c63ff' };
+    let lastRouteErrorAt = 0;
+    const ROUTE_COLOR = { walk: '#22c55e', bike: '#06b6d4', transit: '#6c63ff', car: '#f59e0b' };
 
     async function refreshRoute() {
       if (!routeVisible || !myLastLat || !myLastLng || !destLat || !destLng) return;
       try {
         const res  = await fetch(`${WORKER_URL}/api/route?origin_lat=${myLastLat}&origin_lng=${myLastLng}&dest_lat=${destLat}&dest_lng=${destLng}&transport=${transport}`);
         const data = await res.json();
-        if (data.path?.length) drawRoute(data.path, ROUTE_COLOR[transport] || '#6c63ff');
-      } catch (e) { console.warn('Route error:', e); }
+        if (data.path?.length) drawRoute(data.path, ROUTE_COLOR[transport] || '#6c63ff', data.straight);
+      } catch (e) {
+        console.warn('Route error:', e);
+        const now = Date.now();
+        if (now - lastRouteErrorAt > 15000) {
+          lastRouteErrorAt = now;
+          showToast('경로를 불러오지 못했습니다. 잠시 후 다시 시도합니다.', 'error', 4000);
+        }
+      }
     }
 
     document.getElementById('routeBtn').addEventListener('click', async () => {

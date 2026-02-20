@@ -38,7 +38,7 @@
       <!-- 이동수단 선택 (수락한 경우만) -->
       <div id="transportArea" class="hidden">
         <div class="section-title">이동수단</div>
-        <div class="transport-grid">
+        <div class="transport-grid" style="grid-template-columns:repeat(4,1fr)">
           <button class="transport-btn" data-transport="walk">
             <span class="transport-icon">🚶</span><span>도보</span>
           </button>
@@ -47,6 +47,9 @@
           </button>
           <button class="transport-btn" data-transport="transit">
             <span class="transport-icon">🚌</span><span>대중교통</span>
+          </button>
+          <button class="transport-btn" data-transport="car">
+            <span class="transport-icon">🚗</span><span>자가용</span>
           </button>
         </div>
       </div>
@@ -207,7 +210,7 @@
             </div>
             <div class="friend-info">
               <div class="friend-name">${m.nickname} ${m.uid === myUid ? '(나)' : ''}</div>
-              <div class="text-xs text-muted">${m.transport ? { walk:'도보', bike:'자전거', transit:'대중교통' }[m.transport] + ' · ' : ''}${statusTextMap[m.status] || '-'}</div>
+              <div class="text-xs text-muted">${m.transport ? { walk:'도보', bike:'자전거', transit:'대중교통', car:'자가용' }[m.transport] + ' · ' : ''}${statusTextMap[m.status] || '-'}</div>
             </div>
             <div class="status-dot ${statusDotMap[m.status] || 'dot-gray'}"></div>
           </div>`;
