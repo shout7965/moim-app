@@ -71,9 +71,14 @@ export const subscribeMyMeetings = (uid, callback) => {
     collection(db, 'meetings'),
     where('hostId', '==', uid),
   );
+  const memberMeetingsQuery = query(
+    collectionGroup(db, 'members'),
+    where(FieldPath.documentId(), '==', uid),
+  );
 
   let userMeetingDocs = [];
   let hostMeetings = [];
+  let memberMeetings = [];
 
   const mergeAndCallback = async () => {
     const meetingIds = userMeetingDocs.map(d => d.data().meetingId);
@@ -102,6 +107,7 @@ export const subscribeMyMeetings = (uid, callback) => {
     const byId = new Map();
     for (const m of hostMeetings) byId.set(m.id, m);
     for (const m of userMeetings) byId.set(m.id, m);
+    for (const m of memberMeetings) byId.set(m.id, m);
 
     const merged = Array.from(byId.values());
     merged.sort((a, b) => {
@@ -122,7 +128,19 @@ export const subscribeMyMeetings = (uid, callback) => {
     await mergeAndCallback();
   }, (err) => console.warn('hostMeetings subscribe error:', err));
 
-  return () => { unsubUser(); unsubHost(); };
+  const unsubMember = onSnapshot(memberMeetingsQuery, async (snap) => {
+    const meetingIds = snap.docs.map(d => d.ref.parent.parent?.id).filter(Boolean);
+    if (!meetingIds.length) {
+      memberMeetings = [];
+      await mergeAndCallback();
+      return;
+    }
+    const meetings = await Promise.all(meetingIds.map(id => getMeeting(id).catch(() => null)));
+    memberMeetings = meetings.filter(Boolean);
+    await mergeAndCallback();
+  }, (err) => console.warn('memberMeetings subscribe error:', err));
+
+  return () => { unsubUser(); unsubHost(); unsubMember(); };
 };
 
 // ===== Meeting Members =====
