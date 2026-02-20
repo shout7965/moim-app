@@ -56,12 +56,10 @@
 
       <!-- 선택된 장소 표시 -->
       <div id="selectedPlace" class="hidden">
-        <div class="card-sm flex-between">
-          <div>
-            <div class="font-bold text-sm" id="placeName">-</div>
-            <div class="text-xs text-muted" id="placeAddr">-</div>
-          </div>
-          <button class="btn btn-secondary btn-sm" id="clearPlaceBtn">변경</button>
+        <div class="card-sm hidden" id="placeInfoCard" style="text-align:center;position:relative;padding:12px 56px 12px 56px">
+          <div class="font-bold text-sm" id="placeName" style="color:var(--text1,#fff)">-</div>
+          <div class="text-xs" id="placeAddr" style="color:var(--text2);margin-top:3px">-</div>
+          <button class="btn btn-secondary btn-sm" id="clearPlaceBtn" style="position:absolute;right:10px;top:50%;transform:translateY(-50%)">변경</button>
         </div>
         <div id="map"></div>
       </div>
@@ -181,8 +179,7 @@
     }
 
     async function enablePinPick() {
-      document.getElementById('placeName').textContent = '지도에서 지정';
-      document.getElementById('placeAddr').textContent = '지도를 눌러 위치를 선택하세요';
+      document.getElementById('placeInfoCard').classList.add('hidden');
       document.getElementById('selectedPlace').classList.remove('hidden');
       await new Promise(requestAnimationFrame);
       const baseLat = selectedPlace?.lat || 37.5665;
@@ -204,7 +201,7 @@
           };
           document.getElementById('placeName').textContent = selectedPlace.name;
           document.getElementById('placeAddr').textContent = selectedPlace.address;
-          document.getElementById('selectedPlace').classList.remove('hidden');
+          document.getElementById('placeInfoCard').classList.remove('hidden');
           setMarker(lat, lng, '');
         });
         mapClickBound = true;
@@ -259,6 +256,7 @@
       selectedPlace = place;
       document.getElementById('placeName').textContent = place.name;
       document.getElementById('placeAddr').textContent = place.address;
+      document.getElementById('placeInfoCard').classList.remove('hidden');
       document.getElementById('selectedPlace').classList.remove('hidden');
       await new Promise(requestAnimationFrame);
       await ensureMap(place.lat, place.lng, 3);
