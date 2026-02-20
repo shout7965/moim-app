@@ -31,6 +31,11 @@ export async function calcEta(transport, fromLat, fromLng, toLat, toLng) {
     const res  = await fetch(url);
     const data = await res.json();
     if (data.durationSec != null) return Math.ceil(data.durationSec / 60);
+    if (data.distanceMeters != null && (t === 'walk' || t === 'bike')) {
+      const speed = SPEED[t] || SPEED.walk;
+      const km = data.distanceMeters / 1000;
+      return Math.ceil((km / speed) * 60);
+    }
   } catch (e) {
     console.warn('Route ETA error:', e);
   }

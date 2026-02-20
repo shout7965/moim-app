@@ -233,6 +233,7 @@ async function handleRoute(request, env) {
     const t = transport || 'walk';
     let path = [];
     let durationSec = null;
+    let distanceMeters = null;
 
     if (t === 'transit') {
       // 대중교통 → 카카오 모빌리티 transit API 우선, 실패 시 도보 경로로 대체
@@ -251,27 +252,28 @@ async function handleRoute(request, env) {
         const res = await getCarRoute(origin, destination, env, { withPath });
         path = res.path;
         durationSec = res.durationSec;
+        distanceMeters = res.distanceMeters;
       } catch {
         const res = await getOsrmRoute('driving', origin, destination, { withPath });
         path = res.path;
         durationSec = res.durationSec;
+        distanceMeters = res.distanceMeters;
       }
     } else if (t === 'walk' || t === 'bike') {
-      // 도보/자전거 → OSRM 공개 라우터 (cycling 프로파일이 walking과 동일하므로 walking 사용)
+      // 도보/자전거 → OSRM 공개 라우터는 한국 경로 시간 오류가 있어 경로(폴리라인)만 사용
+      // ETA는 클라이언트 haversine 추정(walk 5km/h, bike 15km/h)으로 계산
       const res = await getOsrmRoute('walking', origin, destination, { withPath });
       path = res.path;
-      // 자전거는 도보의 3배 속도(15km/h vs 5km/h)로 ETA 환산
-      durationSec = res.durationSec != null
-        ? (t === 'bike' ? Math.round(res.durationSec / 3) : res.durationSec)
-        : null;
+      durationSec = null;
+      distanceMeters = res.distanceMeters;
     } else {
-      return json({ path: straight, straight: true, durationSec: null });
+      return json({ path: straight, straight: true, durationSec: null, distanceMeters: null });
     }
 
-    if (path.length > 2) return json({ path, straight: false, durationSec });
-    return json({ path: straight, straight: true, durationSec });
+    if (path.length > 2) return json({ path, straight: false, durationSec, distanceMeters });
+    return json({ path: straight, straight: true, durationSec, distanceMeters });
   } catch (e) {
-    return json({ path: straight, straight: true, durationSec: null });
+    return json({ path: straight, straight: true, durationSec: null, distanceMeters: null });
   }
 }
 
@@ -288,7 +290,8 @@ async function getTransitRoute(origin, destination, env, { withPath } = { withPa
   if (!res.ok || !data.routes?.length) throw new Error(data.msg || 'no route');
 
   const durationSec = data.routes?.[0]?.summary?.duration ?? null;
-  if (!withPath) return { path: [], durationSec };
+  const distanceMeters = data.routes?.[0]?.summary?.distance ?? null;
+  if (!withPath) return { path: [], durationSec, distanceMeters };
 
   const path = [];
   for (const section of (data.routes[0].sections ?? [])) {
@@ -306,7 +309,7 @@ async function getTransitRoute(origin, destination, env, { withPath } = { withPa
       path.push({ lng: st.x, lat: st.y });
     }
   }
-  return { path, durationSec };
+  return { path, durationSec, distanceMeters };
 }
 
 async function getCarRoute(origin, destination, env, { withPath } = { withPath: true }) {
@@ -327,7 +330,8 @@ async function getCarRoute(origin, destination, env, { withPath } = { withPath: 
   if (!res.ok || !data.routes?.length) throw new Error(data.msg || 'no route');
 
   const durationSec = data.routes?.[0]?.summary?.duration ?? null;
-  if (!withPath) return { path: [], durationSec };
+  const distanceMeters = data.routes?.[0]?.summary?.distance ?? null;
+  if (!withPath) return { path: [], durationSec, distanceMeters };
 
   const path = [];
   for (const section of (data.routes[0].sections ?? [])) {
@@ -336,7 +340,7 @@ async function getCarRoute(origin, destination, env, { withPath } = { withPath: 
       for (let i = 0; i < v.length; i += 2) path.push({ lng: v[i], lat: v[i + 1] });
     }
   }
-  return { path, durationSec };
+  return { path, durationSec, distanceMeters };
 }
 
 async function getOsrmRoute(profile, origin, destination, { withPath } = { withPath: true }) {
@@ -350,10 +354,11 @@ async function getOsrmRoute(profile, origin, destination, { withPath } = { withP
   if (!res.ok || data.code !== 'Ok' || !data.routes?.length) throw new Error('no route');
 
   const durationSec = data.routes?.[0]?.duration ?? null;
-  if (!withPath) return { path: [], durationSec };
+  const distanceMeters = data.routes?.[0]?.distance ?? null;
+  if (!withPath) return { path: [], durationSec, distanceMeters };
 
   const coords = data.routes[0].geometry?.coordinates ?? [];
-  return { path: coords.map(([lng, lat]) => ({ lng, lat })), durationSec };
+  return { path: coords.map(([lng, lat]) => ({ lng, lat })), durationSec, distanceMeters };
 }
 
 // ===== Google OAuth JWT Helper =====
