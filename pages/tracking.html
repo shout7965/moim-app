@@ -67,6 +67,7 @@
       <button class="btn btn-success" style="flex:1" id="arrivedBtn">
         ✅ 도착 완료
       </button>
+      <button class="btn btn-secondary btn-sm" id="routeBtn" title="경로 표시">🗺️</button>
       <button class="btn btn-secondary btn-sm" id="centerBtn" title="내 위치로">📍</button>
     </div>
   </div>
@@ -74,7 +75,7 @@
   <script type="module">
     import { requireAuth, showToast, getParam, formatDateTime } from '/main.js';
     import { getMeeting, getMember, setMember, subscribeMembers, updateMeeting } from '/js/db.js';
-    import { initMap, setMarker, addMemberMarker, centerMapAt, getMap } from '/js/kakaomap.js';
+    import { initMap, setMarker, addMemberMarker, centerMapAt, drawRoute, clearRoute } from '/js/kakaomap.js';
     import { startLocationTracking, stopLocationTracking } from '/js/location.js';
     import { calcEta, etaLabel, etaClass } from '/js/eta.js';
     import { WORKER_URL } from '/js/firebase-config.js';
@@ -182,6 +183,34 @@
 
     let myLastLat = null;
     let myLastLng = null;
+    let routeVisible = false;
+    const ROUTE_COLOR = { walk: '#22c55e', bike: '#06b6d4', transit: '#6c63ff' };
+
+    async function refreshRoute() {
+      if (!routeVisible || !myLastLat || !myLastLng || !destLat || !destLng) return;
+      try {
+        const res  = await fetch(`${WORKER_URL}/api/route?origin_lat=${myLastLat}&origin_lng=${myLastLng}&dest_lat=${destLat}&dest_lng=${destLng}&transport=${transport}`);
+        const data = await res.json();
+        if (data.path?.length) drawRoute(data.path, ROUTE_COLOR[transport] || '#6c63ff');
+      } catch (e) { console.warn('Route error:', e); }
+    }
+
+    document.getElementById('routeBtn').addEventListener('click', async () => {
+      routeVisible = !routeVisible;
+      const btn = document.getElementById('routeBtn');
+      if (routeVisible) {
+        btn.style.background    = 'rgba(108,99,255,0.25)';
+        btn.style.borderColor   = 'var(--accent)';
+        btn.style.color         = 'var(--accent2)';
+        if (!myLastLat) { showToast('위치 수신 후 경로를 표시합니다', 'info'); return; }
+        await refreshRoute();
+      } else {
+        btn.style.background  = '';
+        btn.style.borderColor = '';
+        btn.style.color       = '';
+        clearRoute();
+      }
+    });
 
     startLocationTracking(
       meetingId, myUid,
@@ -189,6 +218,7 @@
         myLastLat = lat;
         myLastLng = lng;
         if (!memberColorMap[myUid]) memberColorMap[myUid] = COLORS[0];
+        refreshRoute(); // 위치 갱신 시 경로 자동 업데이트
       },
       async (lat, lng) => {
         if (!destLat || !destLng) return null;

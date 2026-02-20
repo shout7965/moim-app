@@ -44,6 +44,9 @@ export default {
     if (path === '/api/search-places' && request.method === 'GET') {
       return handleSearchPlaces(request, env);
     }
+    if (path === '/api/route' && request.method === 'GET') {
+      return handleRoute(request, env);
+    }
 
     return err('Not found', 404);
   },
@@ -196,6 +199,64 @@ async function handleSearchPlaces(request, env) {
   }));
 
   return json({ results });
+}
+
+// ===== GET /api/route =====
+// Query: origin_lat, origin_lng, dest_lat, dest_lng, transport
+// 카카오 모빌리티 경로 탐색 → 폴리라인용 좌표 배열 반환
+async function handleRoute(request, env) {
+  const url = new URL(request.url);
+  const { origin_lat, origin_lng, dest_lat, dest_lng, transport } = Object.fromEntries(url.searchParams);
+  if (!origin_lat || !origin_lng || !dest_lat || !dest_lng) {
+    return err('origin_lat, origin_lng, dest_lat, dest_lng required');
+  }
+
+  const origin      = `${origin_lng},${origin_lat}`;
+  const destination = `${dest_lng},${dest_lat}`;
+
+  try {
+    const path = transport === 'transit'
+      ? await getTransitRoute(origin, destination, env)
+      : await getDrivingRoute(origin, destination, env);
+    return json({ path });
+  } catch {
+    // 폴백: 직선
+    return json({ path: [
+      { lat: parseFloat(origin_lat),  lng: parseFloat(origin_lng) },
+      { lat: parseFloat(dest_lat),    lng: parseFloat(dest_lng) },
+    ]});
+  }
+}
+
+async function getDrivingRoute(origin, destination, env) {
+  const u = new URL('https://apis-navi.kakaomobility.com/v1/directions');
+  u.searchParams.set('origin', origin);
+  u.searchParams.set('destination', destination);
+  u.searchParams.set('priority', 'RECOMMEND');
+  const res  = await fetch(u.toString(), { headers: { Authorization: `KakaoAK ${env.KAKAO_MOBILITY_KEY}` } });
+  const data = await res.json();
+  const vertexes = (data.routes?.[0]?.sections ?? [])
+    .flatMap(s => s.roads ?? [])
+    .flatMap(r => r.vertexes ?? []);
+  const path = [];
+  for (let i = 0; i < vertexes.length; i += 2) path.push({ lng: vertexes[i], lat: vertexes[i + 1] });
+  return path;
+}
+
+async function getTransitRoute(origin, destination, env) {
+  const u = new URL('https://apis-navi.kakaomobility.com/v1/directions/transit');
+  u.searchParams.set('origin', origin);
+  u.searchParams.set('destination', destination);
+  const res  = await fetch(u.toString(), { headers: { Authorization: `KakaoAK ${env.KAKAO_MOBILITY_KEY}` } });
+  const data = await res.json();
+  const path = [];
+  for (const section of (data.routes?.[0]?.sections ?? [])) {
+    for (const road of (section.roads ?? [])) {
+      const v = road.vertexes ?? [];
+      for (let i = 0; i < v.length; i += 2) path.push({ lng: v[i], lat: v[i + 1] });
+    }
+  }
+  return path;
 }
 
 // ===== Google OAuth JWT Helper =====

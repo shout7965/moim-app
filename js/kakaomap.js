@@ -3,6 +3,7 @@ import { KAKAO_JS_KEY } from './firebase-config.js';
 
 let mapInstance = null;
 let markerInstance = null;
+let routePolyline = null;
 
 // 카카오맵 SDK 로드
 export function loadKakaoMapSDK() {
@@ -116,6 +117,25 @@ export function centerOnMyLocation() {
       reject(new Error(msg));
     }, { enableHighAccuracy: true, timeout: 10000 });
   });
+}
+
+// 경로 폴리라인 그리기
+export function drawRoute(path, color = '#6c63ff') {
+  clearRoute();
+  if (!mapInstance || !path?.length) return;
+  routePolyline = new kakao.maps.Polyline({
+    path:           path.map(p => new kakao.maps.LatLng(p.lat, p.lng)),
+    strokeWeight:   5,
+    strokeColor:    color,
+    strokeOpacity:  0.75,
+    strokeStyle:    'solid',
+  });
+  routePolyline.setMap(mapInstance);
+}
+
+// 경로 폴리라인 제거
+export function clearRoute() {
+  if (routePolyline) { routePolyline.setMap(null); routePolyline = null; }
 }
 
 // 특정 좌표로 지도 이동
