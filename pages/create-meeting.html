@@ -209,7 +209,12 @@
         });
 
         // 호스트를 멤버로 추가
-        await inviteMember(meetingId, myUid, myProfile.nickname, myProfile.profileImg, { title });
+        await inviteMember(meetingId, myUid, myProfile.nickname, myProfile.profileImg, {
+          title,
+          status: 'pending',
+          scheduledAt,
+          place: { name: selectedPlace.name, address: selectedPlace.address },
+        });
         // 수락 상태로 변경
         const { setMember } = await import('/js/db.js');
         await setMember(meetingId, myUid, { status: 'accepted' });
@@ -218,7 +223,12 @@
         await Promise.all([...selectedFriends].map(async (uid) => {
           const f = friends.find(fr => fr.uid === uid);
           if (!f) return;
-          await inviteMember(meetingId, uid, f.nickname, f.profileImg, { title });
+          await inviteMember(meetingId, uid, f.nickname, f.profileImg, {
+            title,
+            status: 'pending',
+            scheduledAt,
+            place: { name: selectedPlace.name, address: selectedPlace.address },
+          });
           // FCM 알림 (fcmToken이 있을 때만)
           if (f.fcmToken) {
             await fetch(`${WORKER_URL}/api/notify`, {

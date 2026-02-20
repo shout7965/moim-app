@@ -66,12 +66,10 @@ export const subscribeMyMeetings = (uid, callback) => {
   const userMeetingsQuery = query(
     collection(db, 'userMeetings'),
     where('uid', '==', uid),
-    orderBy('createdAt', 'desc'),
   );
   const hostMeetingsQuery = query(
     collection(db, 'meetings'),
     where('hostId', '==', uid),
-    orderBy('createdAt', 'desc'),
   );
 
   let userMeetingDocs = [];
@@ -81,8 +79,18 @@ export const subscribeMyMeetings = (uid, callback) => {
     const meetingIds = userMeetingDocs.map(d => d.data().meetingId);
     let userMeetings = [];
     if (meetingIds.length) {
-      const meetings = await Promise.all(meetingIds.map(id => getMeeting(id)));
-      userMeetings = meetings.filter(Boolean);
+      const meetings = await Promise.all(meetingIds.map(id => getMeeting(id).catch(() => null)));
+      userMeetings = meetings.map((m, i) => {
+        if (m) return m;
+        const data = userMeetingDocs[i]?.data?.() || {};
+        return {
+          id: data.meetingId || meetingIds[i],
+          title: data.title || '(알 수 없는 약속)',
+          status: data.status || 'pending',
+          scheduledAt: data.scheduledAt || null,
+          place: data.placeName ? { name: data.placeName, address: data.placeAddress || '' } : null,
+        };
+      }).filter(Boolean);
     }
 
     const byId = new Map();
@@ -101,12 +109,12 @@ export const subscribeMyMeetings = (uid, callback) => {
   const unsubUser = onSnapshot(userMeetingsQuery, async (snap) => {
     userMeetingDocs = snap.docs;
     await mergeAndCallback();
-  });
+  }, (err) => console.warn('userMeetings subscribe error:', err));
 
   const unsubHost = onSnapshot(hostMeetingsQuery, async (snap) => {
     hostMeetings = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     await mergeAndCallback();
-  });
+  }, (err) => console.warn('hostMeetings subscribe error:', err));
 
   return () => { unsubUser(); unsubHost(); };
 };
@@ -137,7 +145,7 @@ export const updateMemberLocation = (meetingId, uid, lat, lng, eta) =>
   });
 
 // 약속 초대: 멤버 추가 + userMeetings 기록
-export const inviteMember = async (meetingId, uid, nickname, profileImg, meeting) => {
+export const inviteMember = async (meetingId, uid, nickname, profileImg, meeting = {}) => {
   const batch = writeBatch(db);
 
   batch.set(doc(db, 'meetings', meetingId, 'members', uid), {
@@ -150,7 +158,11 @@ export const inviteMember = async (meetingId, uid, nickname, profileImg, meeting
 
   batch.set(doc(db, 'userMeetings', `${uid}_${meetingId}`), {
     uid, meetingId,
-    title:     meeting.title,
+    title:     meeting.title || '(알 수 없는 약속)',
+    status:    meeting.status || 'pending',
+    scheduledAt: meeting.scheduledAt || null,
+    placeName: meeting.place?.name || meeting.placeName || null,
+    placeAddress: meeting.place?.address || meeting.placeAddress || null,
     createdAt: serverTimestamp(),
   });
 
