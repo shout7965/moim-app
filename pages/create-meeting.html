@@ -23,7 +23,7 @@
   </style>
 </head>
 <body>
-  <div class="page">
+  <div class="page page-with-nav">
     <div class="page-header">
       <button class="btn-icon-round" onclick="history.back()">←</button>
       <h1 id="pageTitle">약속 만들기</h1>
@@ -79,6 +79,21 @@
       <button class="btn btn-primary btn-block" id="createBtn" style="margin-top:8px">약속 만들기</button>
     </div>
   </div>
+
+  <!-- 하단 네비게이션 -->
+  <nav class="bottom-nav">
+    <div class="nav-items">
+      <button class="nav-item" onclick="location.href='/pages/home.html'">
+        <span class="nav-icon">🏠</span><span>홈</span>
+      </button>
+      <button class="nav-item active">
+        <span class="nav-icon">➕</span><span>약속</span>
+      </button>
+      <button class="nav-item" onclick="location.href='/pages/friends.html'">
+        <span class="nav-icon">👥</span><span>친구</span>
+      </button>
+    </div>
+  </nav>
 
   <script type="module">
     import { requireAuth, getParam }    from '/main.js';
