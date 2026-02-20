@@ -83,7 +83,7 @@
   <script type="module">
     import { requireAuth }    from '/main.js';
     import { showToast }      from '/main.js';
-    import { initMap, setMarker, searchPlaces } from '/js/kakaomap.js';
+    import { initMap, setMarker, searchPlaces, loadKakaoMapSDK } from '/js/kakaomap.js';
     import { createMeeting, inviteMember, getFriends } from '/js/db.js';
     import { WORKER_URL }     from '/js/firebase-config.js';
     import { Timestamp }      from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -112,6 +112,7 @@
       if (!q) return;
       document.getElementById('searchPlaceBtn').textContent = '...';
       try {
+        await loadKakaoMapSDK();
         const results = await searchPlaces(q);
         renderPlaceResults(results);
       } catch (e) {
