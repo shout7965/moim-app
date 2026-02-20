@@ -4,7 +4,7 @@ import {
   doc, collection, getDoc, setDoc, updateDoc, deleteDoc,
   addDoc, query, where, orderBy, limit,
   onSnapshot, serverTimestamp, arrayUnion, arrayRemove,
-  getDocs, writeBatch, collectionGroup, FieldPath,
+  getDocs, writeBatch,
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 // ===== Users =====
@@ -62,7 +62,7 @@ export const updateMeeting = (meetingId, data) =>
 
 // 내가 멤버인 약속 구독
 export const subscribeMyMeetings = (uid, callback) => {
-  // members 서브컬렉션에서 내 uid 기반으로 쿼리 불가 → userMeetings + hostId 보완 조회
+  // userMeetings 인덱스 + hostId 쿼리 두 가지로 커버
   const userMeetingsQuery = query(
     collection(db, 'userMeetings'),
     where('uid', '==', uid),
@@ -71,19 +71,13 @@ export const subscribeMyMeetings = (uid, callback) => {
     collection(db, 'meetings'),
     where('hostId', '==', uid),
   );
-  const memberMeetingsQuery = query(
-    collectionGroup(db, 'members'),
-    where(FieldPath.documentId(), '==', uid),
-  );
 
   let userMeetingDocs = [];
   let hostMeetings = [];
-  let memberMeetings = [];
 
   const mergeAndCallback = async () => {
-    const meetingIds = userMeetingDocs.map(d => d.data().meetingId);
     let userMeetings = [];
-    if (meetingIds.length) {
+    if (userMeetingDocs.length) {
       const meetings = await Promise.all(userMeetingDocs.map(async (docSnap) => {
         const id = docSnap.data().meetingId;
         try {
@@ -108,7 +102,6 @@ export const subscribeMyMeetings = (uid, callback) => {
     const byId = new Map();
     for (const m of hostMeetings) byId.set(m.id, m);
     for (const m of userMeetings) byId.set(m.id, m);
-    for (const m of memberMeetings) byId.set(m.id, m);
 
     const merged = Array.from(byId.values());
     merged.sort((a, b) => {
@@ -129,19 +122,7 @@ export const subscribeMyMeetings = (uid, callback) => {
     await mergeAndCallback();
   }, (err) => console.warn('hostMeetings subscribe error:', err));
 
-  const unsubMember = onSnapshot(memberMeetingsQuery, async (snap) => {
-    const meetingIds = snap.docs.map(d => d.ref.parent.parent?.id).filter(Boolean);
-    if (!meetingIds.length) {
-      memberMeetings = [];
-      await mergeAndCallback();
-      return;
-    }
-    const meetings = await Promise.all(meetingIds.map(id => getMeeting(id).catch(() => null)));
-    memberMeetings = meetings.filter(Boolean);
-    await mergeAndCallback();
-  }, (err) => console.warn('memberMeetings subscribe error:', err));
-
-  return () => { unsubUser(); unsubHost(); unsubMember(); };
+  return () => { unsubUser(); unsubHost(); };
 };
 
 // ===== Meeting Members =====
@@ -195,29 +176,10 @@ export const inviteMember = async (meetingId, uid, nickname, profileImg, meeting
   await batch.commit();
 };
 
-// 누락된 userMeetings 인덱스를 복구 (내 멤버십 기준)
+// 누락된 userMeetings 인덱스를 복구 — userMeetings 기반 자가 검증
 export const syncUserMeetings = async (uid) => {
-  const q = query(collectionGroup(db, 'members'), where(FieldPath.documentId(), '==', uid));
-  const snap = await getDocs(q);
-  if (snap.empty) return;
-
-  await Promise.all(snap.docs.map(async (memberDoc) => {
-    const meetingId = memberDoc.ref.parent.parent?.id;
-    if (!meetingId) return;
-    const meeting = await getMeeting(meetingId);
-    if (!meeting) return;
-    await setDoc(doc(db, 'userMeetings', `${uid}_${meetingId}`), {
-      uid,
-      meetingId,
-      title: meeting.title || '(알 수 없는 약속)',
-      status: meeting.status || 'pending',
-      scheduledAt: meeting.scheduledAt || null,
-      placeName: meeting.place?.name || null,
-      placeAddress: meeting.place?.address || null,
-      hostId: meeting.hostId || null,
-      createdAt: meeting.createdAt || serverTimestamp(),
-    }, { merge: true });
-  }));
+  // userMeetings는 inviteMember/createMeeting 시 자동 생성됨
+  // collectionGroup 방식은 Firebase v10 모듈형 SDK에서 동작 안 함 → no-op
 };
 
 // 호스트가 만든 약속의 userMeetings 인덱스를 전체 멤버 기준으로 복구

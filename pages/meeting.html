@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <div class="page">
+  <div class="page page-with-nav">
     <div class="page-header">
       <button class="btn-icon-round" onclick="location.href='/pages/home.html'">←</button>
       <h1 id="meetingTitle">약속 상세</h1>
@@ -71,6 +71,21 @@
       </div>
     </div>
   </div>
+
+  <!-- 하단 네비게이션 -->
+  <nav class="bottom-nav">
+    <div class="nav-items">
+      <button class="nav-item" onclick="location.href='/pages/home.html'">
+        <span class="nav-icon">🏠</span><span>홈</span>
+      </button>
+      <button class="nav-item" onclick="location.href='/pages/create-meeting.html'">
+        <span class="nav-icon">➕</span><span>약속</span>
+      </button>
+      <button class="nav-item" onclick="location.href='/pages/friends.html'">
+        <span class="nav-icon">👥</span><span>친구</span>
+      </button>
+    </div>
+  </nav>
 
   <script type="module">
     import { requireAuth, formatDateTime, showToast, getParam } from '/main.js';

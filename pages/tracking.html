@@ -124,9 +124,13 @@
     let colorIndex = 0;
 
     subscribeMembers(meetingId, (members) => {
+      // 최신 멤버 상태 저장 → 경로 갱신
+      latestMembers = members.filter(m => m.status !== 'declined');
+      refreshAllRoutes();
+
       // ETA 목록 렌더링
       const etaEl = document.getElementById('etaList');
-      const trackable = members.filter(m => m.status !== 'declined');
+      const trackable = latestMembers;
 
       if (!trackable.length) {
         etaEl.innerHTML = '<div class="text-sm text-muted">아직 위치 정보가 없습니다.</div>';
@@ -176,50 +180,46 @@
       }
     });
 
-    // 내 위치 추적 시작
-    const transport = myMember?.transport || 'walk';
-    const destLat   = meeting.place?.lat;
-    const destLng   = meeting.place?.lng;
+    const destLat = meeting.place?.lat;
+    const destLng = meeting.place?.lng;
 
-    // Firestore에 이미 저장된 내 위치로 초기화 (페이지 로드 직후에도 경로 표시 가능)
     let myLastLat = myMember?.lat || null;
     let myLastLng = myMember?.lng || null;
     let routeVisible = false;
-    let lastRouteErrorAt = 0;
-    const ROUTE_COLOR = { walk: '#22c55e', bike: '#06b6d4', transit: '#6c63ff', car: '#f59e0b' };
+    let latestMembers = []; // subscribeMembers 최신 상태 보관
 
-    async function refreshRoute() {
-      if (!routeVisible || !myLastLat || !myLastLng || !destLat || !destLng) return;
-      try {
-        const res  = await fetch(`${WORKER_URL}/api/route?origin_lat=${myLastLat}&origin_lng=${myLastLng}&dest_lat=${destLat}&dest_lng=${destLng}&transport=${transport}`);
-        const data = await res.json();
-        if (data.path?.length) drawRoute(data.path, ROUTE_COLOR[transport] || '#6c63ff', data.straight);
-        if (transport === 'transit' && data.straight && data.error === 'transit_route_failed') {
-          const now = Date.now();
-          if (now - lastRouteErrorAt > 15000) {
-            lastRouteErrorAt = now;
-            showToast('대중교통 경로를 불러오지 못했습니다. 모빌리티 권한을 확인해주세요.', 'error', 4500);
+    // 전체 참여자 경로 표시
+    async function refreshAllRoutes() {
+      if (!routeVisible || !destLat || !destLng) return;
+      clearRoute();
+      const toRoute = latestMembers.filter(m => m.lat && m.lng && m.status === 'accepted');
+      if (!toRoute.length) return;
+      await Promise.all(toRoute.map(async (m) => {
+        const t = m.transport || 'walk';
+        try {
+          const res  = await fetch(`${WORKER_URL}/api/route?origin_lat=${m.lat}&origin_lng=${m.lng}&dest_lat=${destLat}&dest_lng=${destLng}&transport=${t}`);
+          const data = await res.json();
+          if (data.path?.length) {
+            const color = memberColorMap[m.uid] || COLORS[colorIndex % COLORS.length];
+            drawRoute(data.path, color, data.straight);
           }
+        } catch (e) {
+          console.warn('Route error for', m.uid, e);
         }
-      } catch (e) {
-        console.warn('Route error:', e);
-        const now = Date.now();
-        if (now - lastRouteErrorAt > 15000) {
-          lastRouteErrorAt = now;
-          showToast('경로를 불러오지 못했습니다. 잠시 후 다시 시도합니다.', 'error', 4000);
-        }
-      }
+      }));
     }
 
     document.getElementById('routeBtn').addEventListener('click', async () => {
       routeVisible = !routeVisible;
       const btn = document.getElementById('routeBtn');
       if (routeVisible) {
-        btn.style.background    = 'rgba(108,99,255,0.25)';
-        btn.style.borderColor   = 'var(--accent)';
-        btn.style.color         = 'var(--accent2)';
-        if (!myLastLat) { showToast('위치 수신 후 경로를 표시합니다', 'info'); return; }
-        await refreshRoute();
+        btn.style.background  = 'rgba(108,99,255,0.25)';
+        btn.style.borderColor = 'var(--accent)';
+        btn.style.color       = 'var(--accent2)';
+        if (!latestMembers.some(m => m.lat && m.lng && m.status === 'accepted')) {
+          showToast('위치 수신 후 경로를 표시합니다', 'info'); return;
+        }
+        await refreshAllRoutes();
       } else {
         btn.style.background  = '';
         btn.style.borderColor = '';
@@ -234,11 +234,14 @@
         myLastLat = lat;
         myLastLng = lng;
         if (!memberColorMap[myUid]) memberColorMap[myUid] = COLORS[0];
-        refreshRoute(); // 위치 갱신 시 경로 자동 업데이트
+        // 내 위치 갱신 시 latestMembers 즉시 반영 후 경로 재그리기
+        latestMembers = latestMembers.map(m => m.uid === myUid ? { ...m, lat, lng } : m);
+        refreshAllRoutes();
       },
       async (lat, lng) => {
         if (!destLat || !destLng) return null;
-        return calcEta(transport, lat, lng, destLat, destLng);
+        const myTransport = myMember?.transport || 'walk';
+        return calcEta(myTransport, lat, lng, destLat, destLng);
       },
     );
 

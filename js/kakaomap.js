@@ -4,7 +4,7 @@ import { KAKAO_JS_KEY } from './firebase-config.js';
 let mapInstance = null;
 let markerInstance = null;
 let infoWindowInstance = null;
-let routePolyline = null;
+let routePolylines = [];
 
 // 카카오맵 SDK 로드
 export function loadKakaoMapSDK() {
@@ -163,23 +163,24 @@ export function centerOnMyLocation() {
   });
 }
 
-// 경로 폴리라인 그리기 (straight=true면 점선으로 표시)
+// 경로 폴리라인 추가 (여러 참여자 경로를 동시에 표시 가능)
 export function drawRoute(path, color = '#6c63ff', straight = false) {
-  clearRoute();
   if (!mapInstance || !path?.length) return;
-  routePolyline = new kakao.maps.Polyline({
-    path:           path.map(p => new kakao.maps.LatLng(p.lat, p.lng)),
-    strokeWeight:   straight ? 3 : 5,
-    strokeColor:    color,
-    strokeOpacity:  straight ? 0.5 : 0.8,
-    strokeStyle:    straight ? 'shortdot' : 'solid',
+  const polyline = new kakao.maps.Polyline({
+    path:          path.map(p => new kakao.maps.LatLng(p.lat, p.lng)),
+    strokeWeight:  straight ? 3 : 5,
+    strokeColor:   color,
+    strokeOpacity: straight ? 0.5 : 0.8,
+    strokeStyle:   straight ? 'shortdot' : 'solid',
   });
-  routePolyline.setMap(mapInstance);
+  polyline.setMap(mapInstance);
+  routePolylines.push(polyline);
 }
 
-// 경로 폴리라인 제거
+// 경로 폴리라인 전체 제거
 export function clearRoute() {
-  if (routePolyline) { routePolyline.setMap(null); routePolyline = null; }
+  routePolylines.forEach(p => p.setMap(null));
+  routePolylines = [];
 }
 
 // 특정 좌표로 지도 이동
