@@ -46,12 +46,8 @@
 
   <script type="module">
     import { KAKAO_JS_KEY, WORKER_URL, auth, db } from '/js/firebase-config.js';
-    import { signInWithCustomToken, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-    import {
-      doc, setDoc, getDoc, serverTimestamp,
-      collection, query, where, limit, getDocs, writeBatch,
-    } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-    import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+    import { signInWithCustomToken, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+    import { doc, setDoc, getDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
     const loginPage    = document.getElementById('loginPage');
     const loadingScreen = document.getElementById('loadingScreen');
@@ -101,7 +97,7 @@
       showLoading();
 
       try {
-        // Worker를 통해 카카오 토큰 교환
+        // 1. 카카오 토큰 교환 + Firebase Custom Token 발급 (Worker)
         const res = await fetch(`${WORKER_URL}/api/kakao-token`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -110,16 +106,16 @@
         const kakaoProfile = await res.json();
         if (kakaoProfile.error) throw new Error(kakaoProfile.error);
 
-        // Firebase Anonymous Auth
-        const cred = await signInAnonymously(auth);
+        // 2. Custom Token으로 로그인 → UID = 'kakao_카카오ID' (모든 기기 동일)
+        const cred = await signInWithCustomToken(auth, kakaoProfile.customToken);
         const uid  = cred.user.uid;
 
-        // Firestore 사용자 문서 생성/업데이트
+        // 3. Firestore 사용자 문서 생성 또는 업데이트
         const userRef  = doc(db, 'users', uid);
         const existing = await getDoc(userRef);
 
         if (existing.exists()) {
-          // 이미 이 uid로 로그인된 경우 → 프로필만 업데이트
+          // 기존 유저 → 프로필만 업데이트
           await setDoc(userRef, {
             kakaoId:    kakaoProfile.kakaoId,
             nickname:   kakaoProfile.nickname,
@@ -127,54 +123,16 @@
             updatedAt:  serverTimestamp(),
           }, { merge: true });
         } else {
-          // 새 anonymous uid → 동일 kakaoId의 기존 유저 찾기 (세션 만료 복구)
-          const q = query(
-            collection(db, 'users'),
-            where('kakaoId', '==', kakaoProfile.kakaoId),
-            limit(1)
-          );
-          const prevSnap = await getDocs(q);
-
-          let inviteCode = generateInviteCode();
-          let friends    = [];
-          let oldUid     = null;
-
-          if (!prevSnap.empty) {
-            // 기존 유저 발견 → inviteCode, friends 복원
-            const oldData = prevSnap.docs[0].data();
-            oldUid     = prevSnap.docs[0].id;
-            inviteCode = oldData.inviteCode || inviteCode;
-            friends    = oldData.friends    || [];
-          }
-
+          // 최초 가입
           await setDoc(userRef, {
             kakaoId:    kakaoProfile.kakaoId,
             nickname:   kakaoProfile.nickname,
             profileImg: kakaoProfile.profileImg || null,
-            inviteCode,
-            friends,
+            inviteCode: generateInviteCode(),
+            friends:    [],
             fcmToken:   null,
             createdAt:  serverTimestamp(),
           });
-
-          // 친구들의 friends 배열에서 oldUid → 새 uid 교체
-          if (oldUid && friends.length > 0) {
-            const friendSnaps = await Promise.all(
-              friends.map(fUid => getDoc(doc(db, 'users', fUid)))
-            );
-            const batch = writeBatch(db);
-            for (const fSnap of friendSnaps) {
-              if (!fSnap.exists()) continue;
-              const arr = fSnap.data().friends || [];
-              if (!arr.includes(oldUid)) continue;
-              batch.update(fSnap.ref, {
-                friends: [...arr.filter(f => f !== oldUid), uid],
-              });
-            }
-            // 구 문서에 migratedTo 표시 (중복 복구 방지)
-            batch.update(prevSnap.docs[0].ref, { migratedTo: uid, friends: [] });
-            await batch.commit();
-          }
         }
 
         window.location.href = '/pages/home.html';

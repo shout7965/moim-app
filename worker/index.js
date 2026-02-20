@@ -105,11 +105,65 @@ async function handleKakaoToken(request, env) {
   const profile = await profileRes.json();
   if (profile.code) return err(profile.msg || 'Profile error', 400);
 
+  // 3. Firebase Custom Token 생성 (kakaoId 기반 고정 UID → 멀티기기 동일 계정)
+  const kakaoId = String(profile.id);
+  let customToken = null;
+  try {
+    const serviceAccount = JSON.parse(env.FCM_SERVICE_ACCOUNT);
+    customToken = await generateFirebaseCustomToken(`kakao_${kakaoId}`, serviceAccount);
+  } catch (e) {
+    return err(`Custom token 생성 실패: ${e.message}`, 500);
+  }
+
   return json({
-    kakaoId:    String(profile.id),
+    kakaoId,
     nickname:   profile.kakao_account?.profile?.nickname  || '사용자',
     profileImg: profile.kakao_account?.profile?.profile_image_url || null,
+    customToken,
   });
+}
+
+// ===== Firebase Custom Token 생성 =====
+// kakaoId 기반 고정 uid('kakao_XXXXX')로 서명 → signInWithCustomToken에서 사용
+async function generateFirebaseCustomToken(uid, serviceAccount) {
+  const now = Math.floor(Date.now() / 1000);
+  const header  = { alg: 'RS256', typ: 'JWT' };
+  const payload = {
+    iss: serviceAccount.client_email,
+    sub: serviceAccount.client_email,
+    aud: 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit',
+    uid,
+    iat: now,
+    exp: now + 3600,
+  };
+
+  const encode = (obj) => btoa(JSON.stringify(obj))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+
+  const signingInput = `${encode(header)}.${encode(payload)}`;
+
+  const pemKey = serviceAccount.private_key
+    .replace(/-----BEGIN PRIVATE KEY-----/, '')
+    .replace(/-----END PRIVATE KEY-----/, '')
+    .replace(/\n/g, '');
+  const keyBytes = Uint8Array.from(atob(pemKey), c => c.charCodeAt(0));
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'pkcs8', keyBytes,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false, ['sign'],
+  );
+
+  const signature = await crypto.subtle.sign(
+    'RSASSA-PKCS1-v1_5',
+    cryptoKey,
+    new TextEncoder().encode(signingInput),
+  );
+
+  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(signature)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+
+  return `${signingInput}.${sigB64}`;
 }
 
 // ===== POST /api/notify =====
