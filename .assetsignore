@@ -1,0 +1,23 @@
+# Git
+.git/
+
+# Claude Code
+.claude/
+
+# Wrangler 빌드 캐시
+.wrangler/
+
+# 로그
+*.log
+firebase-debug.log
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 환경설정 (보안)
+.env
+.env.*
