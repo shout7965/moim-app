@@ -243,7 +243,7 @@ async function handleRoute(request, env) {
       } catch {
         const res = await getOsrmRoute('walking', origin, destination, { withPath });
         path = res.path;
-        durationSec = res.durationSec;
+        durationSec = null; // 도보 소요시간은 대중교통 ETA로 부적합 → 클라이언트 추정값 사용
       }
     } else if (t === 'car') {
       // 자가용 → 카카오 모빌리티 자동차 길찾기 우선, 실패 시 OSRM driving
