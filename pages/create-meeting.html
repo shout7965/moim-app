@@ -161,6 +161,12 @@
         mapInstance.setLevel(level);
         mapInstance.relayout();
       }
+      // hidden 상태에서 표시될 때 대비
+      setTimeout(() => {
+        if (!mapInstance) return;
+        mapInstance.relayout();
+        mapInstance.setCenter(new kakao.maps.LatLng(lat, lng));
+      }, 0);
       return mapInstance;
     }
 
