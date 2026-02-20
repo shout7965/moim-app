@@ -188,6 +188,7 @@ export const inviteMember = async (meetingId, uid, nickname, profileImg, meeting
     scheduledAt: meeting.scheduledAt || null,
     placeName: meeting.place?.name || meeting.placeName || null,
     placeAddress: meeting.place?.address || meeting.placeAddress || null,
+    hostId:    meeting.hostId || null,
     createdAt: serverTimestamp(),
   });
 
@@ -213,7 +214,34 @@ export const syncUserMeetings = async (uid) => {
       scheduledAt: meeting.scheduledAt || null,
       placeName: meeting.place?.name || null,
       placeAddress: meeting.place?.address || null,
+      hostId: meeting.hostId || null,
       createdAt: meeting.createdAt || serverTimestamp(),
     }, { merge: true });
+  }));
+};
+
+// 호스트가 만든 약속의 userMeetings 인덱스를 전체 멤버 기준으로 복구
+export const repairHostUserMeetings = async (uid) => {
+  const hostSnap = await getDocs(query(collection(db, 'meetings'), where('hostId', '==', uid)));
+  if (hostSnap.empty) return;
+
+  await Promise.all(hostSnap.docs.map(async (meetingDoc) => {
+    const meeting = { id: meetingDoc.id, ...meetingDoc.data() };
+    const memberSnap = await getDocs(collection(db, 'meetings', meeting.id, 'members'));
+    await Promise.all(memberSnap.docs.map((m) => setDoc(
+      doc(db, 'userMeetings', `${m.id}_${meeting.id}`),
+      {
+        uid: m.id,
+        meetingId: meeting.id,
+        title: meeting.title || '(알 수 없는 약속)',
+        status: meeting.status || 'pending',
+        scheduledAt: meeting.scheduledAt || null,
+        placeName: meeting.place?.name || null,
+        placeAddress: meeting.place?.address || null,
+        hostId: meeting.hostId || null,
+        createdAt: meeting.createdAt || serverTimestamp(),
+      },
+      { merge: true },
+    )));
   }));
 };
