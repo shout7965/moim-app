@@ -168,8 +168,7 @@
       }).join('');
 
       // 수락한 멤버 전원 도착 확인 → 자동 완료
-      const accepted = trackable.filter(m => m.status === 'accepted' || m.status === 'arrived');
-      const allArrived = accepted.length > 0 && accepted.every(m => m.status === 'arrived');
+      const allArrived = trackable.length > 0 && trackable.every(m => m.status === 'arrived');
       if (allArrived && meeting.status !== 'done') {
         updateMeeting(meetingId, { status: 'done' }).catch(console.warn);
         showToast('모두 도착했습니다! 🎉', 'success', 5000);
