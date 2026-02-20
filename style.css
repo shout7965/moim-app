@@ -585,6 +585,18 @@ input, textarea, select {
 .eta-moving  { background: rgba(108,99,255,0.15); color: var(--accent2); }
 .eta-close   { background: rgba(34,197,94,0.15);  color: var(--green); }
 .eta-arrived { background: rgba(34,197,94,0.2);   color: var(--green); }
+.eta-waiting { background: rgba(255,255,255,0.08); color: var(--text3); }
+
+/* ===== Active Meeting Banner ===== */
+.active-meeting-banner {
+  background: linear-gradient(135deg, rgba(108,99,255,0.2) 0%, rgba(34,197,94,0.1) 100%);
+  border: 1px solid rgba(108,99,255,0.4);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.active-meeting-banner:active { border-color: var(--accent); }
 
 /* ===== Transport Select ===== */
 .transport-grid {

@@ -22,7 +22,7 @@ export const VAPID_KEY = "BGUlxZ-JOpRGOzMhyVNNR20BkRPOWGrD-AgYvVrMo5tEb4L926chRX
 export const KAKAO_JS_KEY = "0c6ec1f0dde9301e4db94fa3f46863a9";
 
 // Cloudflare Worker URL (wrangler deploy 후 실제 URL로 교체)
-export const WORKER_URL = "https://moim-app.intoxicated.workers.dev";
+export const WORKER_URL = "https://etaway.intoxicated.workers.dev";
 
 const app = initializeApp(firebaseConfig);
 

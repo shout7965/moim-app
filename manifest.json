@@ -1,7 +1,7 @@
 {
-  "name": "모임 - 친구와 약속",
-  "short_name": "모임",
-  "description": "친구들과 약속 장소와 시간을 정하고 실시간으로 만나요",
+  "name": "어디쯤왔어??",
+  "short_name": "어디쯤왔어",
+  "description": "\"어디쯤 왔어?\" 이제 앱한테 물어보세요 — 모임 장소 정하기부터 실시간 위치 공유까지",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0f",

@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>홈 - 모임</title>
+  <title>홈 - 어디쯤왔어??</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
   <div class="page page-with-nav">
     <div class="page-header">
-      <h1>모임</h1>
+      <h1>어디쯤왔어??</h1>
       <div id="profileArea" style="display:flex;align-items:center;gap:8px">
         <div class="avatar" id="myAvatar">?</div>
         <button class="btn btn-secondary btn-sm" id="logoutBtn" style="display:none">로그아웃</button>
@@ -17,6 +17,9 @@
     </div>
 
     <div class="page-content" style="padding-top:8px">
+      <!-- 진행 중인 모임 배너 -->
+      <div id="activeBanner" style="display:none;margin-bottom:12px"></div>
+
       <!-- 예정 약속 -->
       <div class="flex-between">
         <div class="section-title">예정된 약속</div>
@@ -90,9 +93,37 @@
     const pendingEl = document.getElementById('pendingList');
     const doneEl    = document.getElementById('doneList');
 
+    const activeBannerEl = document.getElementById('activeBanner');
+
     subscribeMyMeetings(myUid, (meetings) => {
-      const pending = meetings.filter(m => m.status !== 'done');
+      const active  = meetings.filter(m => m.status === 'active');
+      const pending = meetings.filter(m => m.status === 'pending');
       const done    = meetings.filter(m => m.status === 'done');
+
+      // 진행 중인 모임 배너
+      if (active.length) {
+        activeBannerEl.style.display = '';
+        activeBannerEl.innerHTML = active.map(m => `
+          <div class="active-meeting-banner" data-id="${m.id}">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <div class="status-dot dot-green dot-pulse"></div>
+              <span class="text-xs text-green font-bold">지금 진행 중</span>
+            </div>
+            <div class="font-bold" style="margin-bottom:2px">${m.title}</div>
+            <div class="text-xs text-muted">📍 ${m.place?.name || '-'}</div>
+            <div style="margin-top:10px;text-align:right">
+              <span class="text-xs text-accent">📡 실시간 추적 보기 →</span>
+            </div>
+          </div>`).join('');
+        activeBannerEl.querySelectorAll('.active-meeting-banner').forEach(el => {
+          el.addEventListener('click', () => {
+            location.href = `/pages/tracking.html?id=${el.dataset.id}`;
+          });
+        });
+      } else {
+        activeBannerEl.style.display = 'none';
+        activeBannerEl.innerHTML = '';
+      }
 
       if (!pending.length) {
         pendingEl.innerHTML = `

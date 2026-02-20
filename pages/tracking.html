@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>실시간 추적 - 모임</title>
+  <title>실시간 추적 - 어디쯤왔어??</title>
   <link rel="stylesheet" href="/style.css" />
   <style>
     body { overflow: hidden; }
@@ -124,33 +124,38 @@
     subscribeMembers(meetingId, (members) => {
       // ETA 목록 렌더링
       const etaEl = document.getElementById('etaList');
-      const active = members.filter(m => m.status === 'accepted' || m.status === 'arrived');
+      const trackable = members.filter(m => m.status !== 'declined');
 
-      if (!active.length) {
+      if (!trackable.length) {
         etaEl.innerHTML = '<div class="text-sm text-muted">아직 위치 정보가 없습니다.</div>';
         return;
       }
 
-      etaEl.innerHTML = active.map(m => {
+      etaEl.innerHTML = trackable.map(m => {
         const isMe = m.uid === myUid;
-        const etaMin = m.eta;
-        const label  = m.status === 'arrived' ? '도착!' : etaLabel(etaMin);
-        const cls    = m.status === 'arrived' ? 'eta-arrived' : etaClass(etaMin);
         const transport = { walk: '🚶', bike: '🚲', transit: '🚌' }[m.transport] || '❓';
 
-        // 지도 마커 업데이트
-        if (m.lat && m.lng) {
+        let label, cls;
+        if (m.status === 'arrived') {
+          label = '도착!'; cls = 'eta-arrived';
+        } else if (m.status === 'invited' || !m.lat) {
+          label = '준비 중'; cls = 'eta-waiting';
+        } else {
+          label = etaLabel(m.eta); cls = etaClass(m.eta);
+        }
+
+        // 지도 마커 업데이트 (위치가 있는 경우만)
+        if (m.lat && m.lng && m.status !== 'invited') {
           if (!memberColorMap[m.uid]) {
             memberColorMap[m.uid] = COLORS[colorIndex++ % COLORS.length];
           }
-          // 기존 마커 제거 후 새로 추가
           if (memberMarkers[m.uid]) memberMarkers[m.uid].setMap(null);
           memberMarkers[m.uid] = addMemberMarker(m.lat, m.lng, isMe ? '나' : m.nickname, memberColorMap[m.uid]);
         }
 
         return `
           <div class="member-eta-card">
-            <div class="avatar" style="flex-shrink:0">
+            <div class="avatar" style="flex-shrink:0;${m.status === 'invited' || !m.lat ? 'opacity:0.5' : ''}">
               ${m.profileImg ? `<img src="${m.profileImg}">` : (m.nickname?.[0] || '?')}
             </div>
             <div class="member-eta-info">
@@ -161,9 +166,10 @@
           </div>`;
       }).join('');
 
-      // 모든 멤버 도착 확인 → 자동 완료
-      const allArrived = active.every(m => m.status === 'arrived');
-      if (allArrived && active.length > 0 && meeting.status !== 'done') {
+      // 수락한 멤버 전원 도착 확인 → 자동 완료
+      const accepted = trackable.filter(m => m.status === 'accepted' || m.status === 'arrived');
+      const allArrived = accepted.length > 0 && accepted.every(m => m.status === 'arrived');
+      if (allArrived && meeting.status !== 'done') {
         updateMeeting(meetingId, { status: 'done' }).catch(console.warn);
         showToast('모두 도착했습니다! 🎉', 'success', 5000);
       }
