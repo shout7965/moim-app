@@ -1,6 +1,5 @@
 // ===== ETA 계산 =====
-// 도보/자전거: Haversine 직선거리 기반
-// 대중교통: Cloudflare Worker → 카카오 모빌리티
+// 모든 이동수단: 경로 기반 ETA (Worker 경유)
 import { WORKER_URL } from './firebase-config.js';
 
 const SPEED = {
@@ -26,33 +25,26 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 export async function calcEta(transport, fromLat, fromLng, toLat, toLng) {
   if (!fromLat || !fromLng || !toLat || !toLng) return null;
 
-  if (transport === 'transit') {
-    return calcTransitEta(fromLat, fromLng, toLat, toLng);
+  try {
+    const t = transport || 'walk';
+    const url = `${WORKER_URL}/api/route?origin_lat=${fromLat}&origin_lng=${fromLng}&dest_lat=${toLat}&dest_lng=${toLng}&transport=${t}&mode=eta`;
+    const res  = await fetch(url);
+    const data = await res.json();
+    if (data.durationSec != null) return Math.ceil(data.durationSec / 60);
+  } catch (e) {
+    console.warn('Route ETA error:', e);
   }
 
+  // 폴백: 직선 거리 기반 보정
+  if (transport === 'transit') {
+    return Math.ceil((haversineKm(fromLat, fromLng, toLat, toLng) * 1.5 / 25) * 60);
+  }
   const speed = SPEED[transport] || SPEED.walk;
   const km    = haversineKm(fromLat, fromLng, toLat, toLng);
-  // 직선거리에 1.3 계수 적용 (실제 경로 보정)
   return Math.ceil((km * 1.3 / speed) * 60);
 }
 
-// 대중교통 ETA (Worker 경유)
-async function calcTransitEta(fromLat, fromLng, toLat, toLng) {
-  try {
-    const url = `${WORKER_URL}/api/transit-eta?origin_lat=${fromLat}&origin_lng=${fromLng}&dest_lat=${toLat}&dest_lng=${toLng}`;
-    const res  = await fetch(url);
-    const data = await res.json();
-    if (data.error) {
-      console.warn('Transit ETA error:', data.error);
-      // 폴백: 직선 거리 기반 (대중교통 평균 25km/h)
-      return Math.ceil((haversineKm(fromLat, fromLng, toLat, toLng) * 1.5 / 25) * 60);
-    }
-    return data.minutes;
-  } catch (e) {
-    console.warn('Transit ETA fetch error:', e);
-    return null;
-  }
-}
+// NOTE: transit 전용 ETA는 /api/route?mode=eta로 통일
 
 // ETA 레이블 (예: "15분" / "도착!")
 export function etaLabel(minutes) {

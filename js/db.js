@@ -62,18 +62,53 @@ export const updateMeeting = (meetingId, data) =>
 
 // 내가 멤버인 약속 구독
 export const subscribeMyMeetings = (uid, callback) => {
-  // members 서브컬렉션에서 내 uid 기반으로 쿼리 불가 → 별도 userMeetings 컬렉션 활용
-  const q = query(
+  // members 서브컬렉션에서 내 uid 기반으로 쿼리 불가 → userMeetings + hostId 보완 조회
+  const userMeetingsQuery = query(
     collection(db, 'userMeetings'),
     where('uid', '==', uid),
     orderBy('createdAt', 'desc'),
   );
-  return onSnapshot(q, async (snap) => {
-    const meetingIds = snap.docs.map(d => d.data().meetingId);
-    if (!meetingIds.length) { callback([]); return; }
-    const meetings = await Promise.all(meetingIds.map(id => getMeeting(id)));
-    callback(meetings.filter(Boolean));
+  const hostMeetingsQuery = query(
+    collection(db, 'meetings'),
+    where('hostId', '==', uid),
+    orderBy('createdAt', 'desc'),
+  );
+
+  let userMeetingDocs = [];
+  let hostMeetings = [];
+
+  const mergeAndCallback = async () => {
+    const meetingIds = userMeetingDocs.map(d => d.data().meetingId);
+    let userMeetings = [];
+    if (meetingIds.length) {
+      const meetings = await Promise.all(meetingIds.map(id => getMeeting(id)));
+      userMeetings = meetings.filter(Boolean);
+    }
+
+    const byId = new Map();
+    for (const m of hostMeetings) byId.set(m.id, m);
+    for (const m of userMeetings) byId.set(m.id, m);
+
+    const merged = Array.from(byId.values());
+    merged.sort((a, b) => {
+      const at = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+      const bt = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+      return bt - at;
+    });
+    callback(merged);
+  };
+
+  const unsubUser = onSnapshot(userMeetingsQuery, async (snap) => {
+    userMeetingDocs = snap.docs;
+    await mergeAndCallback();
   });
+
+  const unsubHost = onSnapshot(hostMeetingsQuery, async (snap) => {
+    hostMeetings = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    await mergeAndCallback();
+  });
+
+  return () => { unsubUser(); unsubHost(); };
 };
 
 // ===== Meeting Members =====

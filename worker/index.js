@@ -159,7 +159,7 @@ async function handleNotify(request, env) {
 
 // ===== GET /api/transit-eta =====
 // Query: origin_lat, origin_lng, dest_lat, dest_lng
-// 카카오 모빌리티 대중교통 경로 탐색
+// 카카오 모빌리티 대중교통 경로 탐색 (duration 반환)
 async function handleTransitEta(request, env) {
   const url = new URL(request.url);
   const { origin_lat, origin_lng, dest_lat, dest_lng } = Object.fromEntries(url.searchParams);
@@ -168,25 +168,16 @@ async function handleTransitEta(request, env) {
     return err('origin_lat, origin_lng, dest_lat, dest_lng required');
   }
 
-  const mobilityUrl = new URL('https://apis-navi.kakaomobility.com/v1/directions/transit');
-  mobilityUrl.searchParams.set('origin',      `${origin_lng},${origin_lat}`);
-  mobilityUrl.searchParams.set('destination', `${dest_lng},${dest_lat}`);
+  const origin      = `${origin_lng},${origin_lat}`;
+  const destination = `${dest_lng},${dest_lat}`;
 
-  const res = await fetch(mobilityUrl.toString(), {
-    headers: { Authorization: `KakaoAK ${env.KAKAO_MOBILITY_KEY}` },
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    return err(`Mobility API error: ${text}`, res.status);
+  try {
+    const { durationSec } = await getTransitRoute(origin, destination, env, { withPath: false });
+    if (durationSec == null) return err('No route found');
+    return json({ minutes: Math.ceil(durationSec / 60) });
+  } catch (e) {
+    return err(`Mobility API error: ${e.message || 'failed'}`, 500);
   }
-
-  const data = await res.json();
-  // routes[0].summary.duration 은 초 단위
-  const durationSec = data.routes?.[0]?.summary?.duration;
-  if (durationSec == null) return err('No route found');
-
-  return json({ minutes: Math.ceil(durationSec / 60) });
 }
 
 // ===== GET /api/search-places =====
@@ -224,7 +215,7 @@ async function handleSearchPlaces(request, env) {
 // 카카오 모빌리티 경로 탐색 → 폴리라인용 좌표 배열 반환
 async function handleRoute(request, env) {
   const url = new URL(request.url);
-  const { origin_lat, origin_lng, dest_lat, dest_lng, transport } = Object.fromEntries(url.searchParams);
+  const { origin_lat, origin_lng, dest_lat, dest_lng, transport, mode } = Object.fromEntries(url.searchParams);
   if (!origin_lat || !origin_lng || !dest_lat || !dest_lng) {
     return err('origin_lat, origin_lng, dest_lat, dest_lng required');
   }
@@ -237,36 +228,44 @@ async function handleRoute(request, env) {
     { lat: parseFloat(dest_lat),   lng: parseFloat(dest_lng) },
   ];
 
+  const withPath = mode !== 'eta';
   try {
     const t = transport || 'walk';
     let path = [];
+    let durationSec = null;
 
     if (t === 'transit') {
       // 대중교통 → 카카오 모빌리티 transit API로 정류장 경유점 추출
-      path = await getTransitRoute(origin, destination, env);
+      const res = await getTransitRoute(origin, destination, env, { withPath });
+      path = res.path;
+      durationSec = res.durationSec;
     } else if (t === 'car') {
       // 자가용 → 카카오 모빌리티 자동차 길찾기
-      path = await getCarRoute(origin, destination, env);
+      const res = await getCarRoute(origin, destination, env, { withPath });
+      path = res.path;
+      durationSec = res.durationSec;
     } else if (t === 'walk' || t === 'bike') {
       // 도보/자전거 → OSRM 공개 라우터 (폴리라인)
       const profile = t === 'walk' ? 'walking' : 'cycling';
-      path = await getOsrmRoute(profile, origin, destination);
+      const res = await getOsrmRoute(profile, origin, destination, { withPath });
+      path = res.path;
+      durationSec = res.durationSec;
     } else {
-      return json({ path: straight, straight: true });
+      return json({ path: straight, straight: true, durationSec: null });
     }
 
-    if (path.length > 2) return json({ path, straight: false });
-    return json({ path: straight, straight: true });
+    if (path.length > 2) return json({ path, straight: false, durationSec });
+    return json({ path: straight, straight: true, durationSec });
   } catch (e) {
     const isTransit = (transport || 'walk') === 'transit';
     if (isTransit) {
-      return json({ path: straight, straight: true, error: 'transit_route_failed' });
+      return json({ path: straight, straight: true, durationSec: null, error: 'transit_route_failed' });
     }
-    return json({ path: straight, straight: true });
+    return json({ path: straight, straight: true, durationSec: null });
   }
 }
 
-async function getTransitRoute(origin, destination, env) {
+async function getTransitRoute(origin, destination, env, { withPath } = { withPath: true }) {
   const u = new URL('https://apis-navi.kakaomobility.com/v1/directions/transit');
   u.searchParams.set('origin', origin);
   u.searchParams.set('destination', destination);
@@ -277,6 +276,9 @@ async function getTransitRoute(origin, destination, env) {
     1,
   );
   if (!res.ok || !data.routes?.length) throw new Error(data.msg || 'no route');
+
+  const durationSec = data.routes?.[0]?.summary?.duration ?? null;
+  if (!withPath) return { path: [], durationSec };
 
   const path = [];
   for (const section of (data.routes[0].sections ?? [])) {
@@ -294,14 +296,14 @@ async function getTransitRoute(origin, destination, env) {
       path.push({ lng: st.x, lat: st.y });
     }
   }
-  return path;
+  return { path, durationSec };
 }
 
-async function getCarRoute(origin, destination, env) {
+async function getCarRoute(origin, destination, env, { withPath } = { withPath: true }) {
   const u = new URL('https://apis-navi.kakaomobility.com/v1/directions');
   u.searchParams.set('origin', origin);
   u.searchParams.set('destination', destination);
-  u.searchParams.set('summary', 'false');
+  u.searchParams.set('summary', 'true');
   u.searchParams.set('road_details', 'false');
   u.searchParams.set('alternatives', 'false');
   u.searchParams.set('priority', 'RECOMMEND');
@@ -314,6 +316,9 @@ async function getCarRoute(origin, destination, env) {
   );
   if (!res.ok || !data.routes?.length) throw new Error(data.msg || 'no route');
 
+  const durationSec = data.routes?.[0]?.summary?.duration ?? null;
+  if (!withPath) return { path: [], durationSec };
+
   const path = [];
   for (const section of (data.routes[0].sections ?? [])) {
     for (const road of (section.roads ?? [])) {
@@ -321,12 +326,12 @@ async function getCarRoute(origin, destination, env) {
       for (let i = 0; i < v.length; i += 2) path.push({ lng: v[i], lat: v[i + 1] });
     }
   }
-  return path;
+  return { path, durationSec };
 }
 
-async function getOsrmRoute(profile, origin, destination) {
+async function getOsrmRoute(profile, origin, destination, { withPath } = { withPath: true }) {
   const u = new URL(`https://router.project-osrm.org/route/v1/${profile}/${origin};${destination}`);
-  u.searchParams.set('overview', 'full');
+  u.searchParams.set('overview', withPath ? 'full' : 'false');
   u.searchParams.set('geometries', 'geojson');
   u.searchParams.set('alternatives', 'false');
   u.searchParams.set('steps', 'false');
@@ -334,8 +339,11 @@ async function getOsrmRoute(profile, origin, destination) {
   const { res, data } = await fetchJsonWithTimeout(u.toString(), {}, 6000, 1);
   if (!res.ok || data.code !== 'Ok' || !data.routes?.length) throw new Error('no route');
 
+  const durationSec = data.routes?.[0]?.duration ?? null;
+  if (!withPath) return { path: [], durationSec };
+
   const coords = data.routes[0].geometry?.coordinates ?? [];
-  return coords.map(([lng, lat]) => ({ lng, lat }));
+  return { path: coords.map(([lng, lat]) => ({ lng, lat })), durationSec };
 }
 
 // ===== Google OAuth JWT Helper =====
