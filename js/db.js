@@ -88,18 +88,19 @@ export const subscribeMyMeetings = (uid, callback) => {
         const id = docSnap.data().meetingId;
         try {
           const m = await getMeeting(id);
-          if (!m) {
-            // 삭제된 약속이면 userMeetings 정리
-            if (docSnap.data().uid === uid) {
-              await deleteDoc(docSnap.ref).catch(() => {});
-            }
-            return null;
-          }
-          return m;
+          if (m) return m;
         } catch (e) {
           console.warn('getMeeting error:', e);
-          return null;
         }
+        const data = docSnap.data() || {};
+        return {
+          id: data.meetingId || id,
+          title: data.title || '(알 수 없는 약속)',
+          status: data.status || 'pending',
+          scheduledAt: data.scheduledAt || null,
+          place: data.placeName ? { name: data.placeName, address: data.placeAddress || '' } : null,
+          hostId: data.hostId || null,
+        };
       }));
       userMeetings = meetings.filter(Boolean);
     }
