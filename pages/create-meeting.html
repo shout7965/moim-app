@@ -146,12 +146,23 @@
         defaultDt.toISOString().slice(0, 16);
     }
 
-    // 장소 검색
-    document.getElementById('searchPlaceBtn').addEventListener('click', doSearch);
-    document.getElementById('placeSearch').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
-
     let mapInstance = null;
     let mapClickBound = false;
+    let searchBtnBusy = false;
+
+    // 장소 검색
+    document.getElementById('searchPlaceBtn').addEventListener('click', () => {
+      if (searchBtnBusy) return;
+      searchBtnBusy = true;
+      doSearch().finally(() => { searchBtnBusy = false; });
+    });
+    document.getElementById('placeSearch').addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        if (searchBtnBusy) return;
+        searchBtnBusy = true;
+        doSearch().finally(() => { searchBtnBusy = false; });
+      }
+    });
 
     async function ensureMap(lat, lng, level = 3) {
       if (!mapInstance) {
@@ -161,12 +172,12 @@
         mapInstance.setLevel(level);
         mapInstance.relayout();
       }
-      // hidden 상태에서 표시될 때 대비
-      setTimeout(() => {
+      // hidden 상태에서 표시될 때 대비 (다음 프레임에서 relayout)
+      requestAnimationFrame(() => {
         if (!mapInstance) return;
         mapInstance.relayout();
         mapInstance.setCenter(new kakao.maps.LatLng(lat, lng));
-      }, 0);
+      });
       return mapInstance;
     }
 
@@ -174,6 +185,7 @@
       document.getElementById('placeName').textContent = '지도에서 지정';
       document.getElementById('placeAddr').textContent = '지도를 눌러 위치를 선택하세요';
       document.getElementById('selectedPlace').classList.remove('hidden');
+      await new Promise(requestAnimationFrame);
       const baseLat = selectedPlace?.lat || 37.5665;
       const baseLng = selectedPlace?.lng || 126.978;
       await ensureMap(baseLat, baseLng, 4);
@@ -249,14 +261,16 @@
       document.getElementById('placeName').textContent = place.name;
       document.getElementById('placeAddr').textContent = place.address;
       document.getElementById('selectedPlace').classList.remove('hidden');
+      await new Promise(requestAnimationFrame);
       await ensureMap(place.lat, place.lng, 3);
       setMarker(place.lat, place.lng, place.name);
     }
 
-    document.getElementById('clearPlaceBtn').addEventListener('click', () => {
+    document.getElementById('clearPlaceBtn').addEventListener('click', async () => {
       selectedPlace = null;
       document.getElementById('selectedPlace').classList.add('hidden');
       document.getElementById('placeSearch').value = '';
+      await enablePinPick();
     });
 
     // 친구 목록 로드
