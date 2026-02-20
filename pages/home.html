@@ -61,6 +61,8 @@
     import { requireAuth }       from '/main.js';
     import { showToast, formatDateTime } from '/main.js';
     import { subscribeMyMeetings } from '/js/db.js';
+    import { db } from '/js/firebase-config.js';
+    import { doc, deleteDoc, collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
     import { initFCM, setupForegroundMessages } from '/js/fcm.js';
     import { signOut } from '/js/auth.js';
 
@@ -139,14 +141,54 @@
             location.href = `/pages/meeting.html?id=${el.dataset.id}`;
           });
         });
+        bindMeetingActions(pendingEl);
       }
 
       if (!done.length) {
         doneEl.innerHTML = '<div class="text-sm text-muted" style="padding:8px 0">아직 완료된 약속이 없습니다.</div>';
       } else {
         doneEl.innerHTML = done.slice(0, 5).map(m => renderMeetingCard(m)).join('');
+        doneEl.querySelectorAll('.meeting-card').forEach(el => {
+          el.addEventListener('click', () => {
+            location.href = `/pages/meeting.html?id=${el.dataset.id}`;
+          });
+        });
+        bindMeetingActions(doneEl);
       }
     });
+
+    function bindMeetingActions(container) {
+      container.querySelectorAll('.meeting-action-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const card = btn.closest('.meeting-card');
+          const meetingId = card?.dataset.id;
+          if (!meetingId) return;
+          const action = btn.dataset.action;
+
+          if (action === 'edit') {
+            location.href = `/pages/create-meeting.html?id=${meetingId}`;
+            return;
+          }
+
+          if (action === 'delete') {
+            if (!confirm('약속을 삭제하시겠습니까?')) return;
+            try {
+              const memberSnap = await getDocs(collection(db, 'meetings', meetingId, 'members'));
+              const memberUids = memberSnap.docs.map(d => d.id);
+              await Promise.all(memberSnap.docs.map(d => deleteDoc(d.ref)));
+              await deleteDoc(doc(db, 'meetings', meetingId));
+              await Promise.all(memberUids.map(uid =>
+                deleteDoc(doc(db, 'userMeetings', `${uid}_${meetingId}`)).catch(() => {})
+              ));
+              showToast('약속이 삭제되었습니다', 'success');
+            } catch (e) {
+              showToast('삭제 실패: ' + e.message, 'error');
+            }
+          }
+        });
+      });
+    }
 
     function renderMeetingCard(m) {
       const badgeMap = {
@@ -161,7 +203,15 @@
         <div class="meeting-card" data-id="${m.id}">
           <div class="meeting-card-top">
             <div class="meeting-title">${m.title}</div>
-            <span class="meeting-badge ${badgeClass}">${badgeText}</span>
+            <div class="meeting-top-right">
+              <span class="meeting-badge ${badgeClass}">${badgeText}</span>
+              ${isHost ? `
+                <div class="meeting-actions">
+                  <button class="meeting-action-btn" data-action="edit" title="수정">✏️</button>
+                  <button class="meeting-action-btn" data-action="delete" title="삭제">✖</button>
+                </div>
+              ` : ''}
+            </div>
           </div>
           <div class="meeting-meta">
             <div class="meeting-meta-row">

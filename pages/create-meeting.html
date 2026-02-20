@@ -26,7 +26,7 @@
   <div class="page">
     <div class="page-header">
       <button class="btn-icon-round" onclick="history.back()">←</button>
-      <h1>약속 만들기</h1>
+      <h1 id="pageTitle">약속 만들기</h1>
     </div>
 
     <div class="page-content pb-safe">
@@ -81,27 +81,70 @@
   </div>
 
   <script type="module">
-    import { requireAuth }    from '/main.js';
+    import { requireAuth, getParam }    from '/main.js';
     import { showToast }      from '/main.js';
     import { initMap, setMarker } from '/js/kakaomap.js';
-    import { createMeeting, inviteMember, getFriends } from '/js/db.js';
+    import { createMeeting, inviteMember, getFriends, getMeeting, updateMeeting } from '/js/db.js';
     import { WORKER_URL }     from '/js/firebase-config.js';
-    import { Timestamp }      from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+    import { db } from '/js/firebase-config.js';
+    import { Timestamp, getDocs, collection, doc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
     let myUid, myProfile;
     let selectedPlace = null;
     let selectedFriends = new Set();
+    const meetingId = getParam('id');
+    const isEdit = !!meetingId;
+    let editingMeeting = null;
 
     try {
       const s = await requireAuth();
       myUid = s.user.uid; myProfile = s.profile;
     } catch { location.href = '/index.html'; }
 
-    // 기본 날짜: 1시간 뒤
-    const defaultDt = new Date(Date.now() + 3600_000);
-    defaultDt.setSeconds(0, 0);
-    document.getElementById('dateTimeInput').value =
-      defaultDt.toISOString().slice(0, 16);
+    function toLocalInputValue(date) {
+      const d = date instanceof Date ? date : new Date(date);
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    if (isEdit) {
+      editingMeeting = await getMeeting(meetingId);
+      if (!editingMeeting) {
+        showToast('약속을 찾을 수 없습니다', 'error');
+        location.href = '/pages/home.html';
+      }
+      if (editingMeeting.hostId !== myUid) {
+        showToast('호스트만 약속을 수정할 수 있습니다', 'error');
+        location.href = `/pages/meeting.html?id=${meetingId}`;
+      }
+
+      document.getElementById('pageTitle').textContent = '약속 수정';
+      document.getElementById('createBtn').textContent = '약속 수정';
+      document.getElementById('titleInput').value = editingMeeting.title || '';
+      if (editingMeeting.scheduledAt) {
+        document.getElementById('dateTimeInput').value =
+          toLocalInputValue(editingMeeting.scheduledAt.toDate ? editingMeeting.scheduledAt.toDate() : editingMeeting.scheduledAt);
+      }
+      if (editingMeeting.place?.lat && editingMeeting.place?.lng) {
+        await selectPlace({
+          name: editingMeeting.place.name,
+          address: editingMeeting.place.address,
+          lat: editingMeeting.place.lat,
+          lng: editingMeeting.place.lng,
+        });
+      }
+
+      // 편집 모드에서는 초대 변경을 숨김
+      document.querySelector('[id="friendCheckList"]')?.closest('.input-group')?.classList.add('hidden');
+    }
+
+    // 기본 날짜: 1시간 뒤 (신규 생성 시)
+    if (!isEdit) {
+      const defaultDt = new Date(Date.now() + 3600_000);
+      defaultDt.setSeconds(0, 0);
+      document.getElementById('dateTimeInput').value =
+        defaultDt.toISOString().slice(0, 16);
+    }
 
     // 장소 검색
     document.getElementById('searchPlaceBtn').addEventListener('click', doSearch);
@@ -198,18 +241,43 @@
 
       const createBtn = document.getElementById('createBtn');
       createBtn.disabled = true;
-      createBtn.textContent = '만드는 중...';
+      createBtn.textContent = isEdit ? '수정 중...' : '만드는 중...';
 
       try {
         const scheduledAt = Timestamp.fromDate(new Date(dateStr));
-        const meetingId   = await createMeeting({
+
+        if (isEdit) {
+          await updateMeeting(meetingId, {
+            title,
+            place: { name: selectedPlace.name, address: selectedPlace.address, lat: selectedPlace.lat, lng: selectedPlace.lng },
+            scheduledAt,
+          });
+
+          // userMeetings 인덱스 갱신
+          const memberSnap = await getDocs(collection(db, 'meetings', meetingId, 'members'));
+          await Promise.all(memberSnap.docs.map(d => updateDoc(
+            doc(db, 'userMeetings', `${d.id}_${meetingId}`),
+            {
+              title,
+              scheduledAt,
+              placeName: selectedPlace.name,
+              placeAddress: selectedPlace.address,
+            },
+          ).catch(() => {})));
+
+          showToast('약속이 수정되었습니다!', 'success');
+          location.href = `/pages/meeting.html?id=${meetingId}`;
+          return;
+        }
+
+        const newMeetingId = await createMeeting({
           title, hostId: myUid,
           place: { name: selectedPlace.name, address: selectedPlace.address, lat: selectedPlace.lat, lng: selectedPlace.lng },
           scheduledAt,
         });
 
         // 호스트를 멤버로 추가
-        await inviteMember(meetingId, myUid, myProfile.nickname, myProfile.profileImg, {
+        await inviteMember(newMeetingId, myUid, myProfile.nickname, myProfile.profileImg, {
           title,
           status: 'pending',
           scheduledAt,
@@ -217,13 +285,13 @@
         });
         // 수락 상태로 변경
         const { setMember } = await import('/js/db.js');
-        await setMember(meetingId, myUid, { status: 'accepted' });
+        await setMember(newMeetingId, myUid, { status: 'accepted' });
 
         // 초대된 친구들 추가 + FCM 알림
         await Promise.all([...selectedFriends].map(async (uid) => {
           const f = friends.find(fr => fr.uid === uid);
           if (!f) return;
-          await inviteMember(meetingId, uid, f.nickname, f.profileImg, {
+          await inviteMember(newMeetingId, uid, f.nickname, f.profileImg, {
             title,
             status: 'pending',
             scheduledAt,
@@ -238,19 +306,19 @@
                 token: f.fcmToken,
                 title: '📅 약속 초대',
                 body:  `${myProfile.nickname}님이 "${title}" 약속에 초대했습니다`,
-                data:  { meetingId, url: `/pages/meeting.html?id=${meetingId}` },
+                data:  { meetingId: newMeetingId, url: `/pages/meeting.html?id=${newMeetingId}` },
               }),
             }).catch(console.warn);
           }
         }));
 
         showToast('약속이 만들어졌습니다!', 'success');
-        location.href = `/pages/meeting.html?id=${meetingId}`;
+        location.href = `/pages/meeting.html?id=${newMeetingId}`;
       } catch (e) {
         console.error(e);
-        showToast('약속 만들기 실패: ' + e.message, 'error');
+        showToast((isEdit ? '약속 수정 실패: ' : '약속 만들기 실패: ') + e.message, 'error');
         createBtn.disabled = false;
-        createBtn.textContent = '약속 만들기';
+        createBtn.textContent = isEdit ? '약속 수정' : '약속 만들기';
       }
     });
   </script>
