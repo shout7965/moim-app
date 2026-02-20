@@ -150,9 +150,48 @@
     document.getElementById('searchPlaceBtn').addEventListener('click', doSearch);
     document.getElementById('placeSearch').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
 
+    let mapInstance = null;
+    let mapClickBound = false;
+
+    async function ensureMap(lat, lng, level = 3) {
+      if (!mapInstance) {
+        mapInstance = await initMap('map', { lat, lng, level });
+      } else {
+        mapInstance.setCenter(new kakao.maps.LatLng(lat, lng));
+        mapInstance.setLevel(level);
+        mapInstance.relayout();
+      }
+      return mapInstance;
+    }
+
+    async function enablePinPick() {
+      const baseLat = selectedPlace?.lat || 37.5665;
+      const baseLng = selectedPlace?.lng || 126.978;
+      await ensureMap(baseLat, baseLng, 4);
+      document.getElementById('placeResults').classList.add('hidden');
+      showToast('지도에서 위치를 탭해 핀을 설정하세요', 'info');
+
+      if (!mapClickBound) {
+        kakao.maps.event.addListener(mapInstance, 'click', (mouseEvent) => {
+          const latlng = mouseEvent.latLng;
+          const place = {
+            name: '지도에서 지정',
+            address: '직접 지정',
+            lat: latlng.getLat(),
+            lng: latlng.getLng(),
+          };
+          selectPlace(place);
+        });
+        mapClickBound = true;
+      }
+    }
+
     async function doSearch() {
       const q = document.getElementById('placeSearch').value.trim();
-      if (!q) return;
+      if (!q) {
+        await enablePinPick();
+        return;
+      }
       document.getElementById('searchPlaceBtn').textContent = '...';
       try {
         const res = await fetch(`${WORKER_URL}/api/search-places?q=${encodeURIComponent(q)}`);
@@ -196,7 +235,7 @@
       document.getElementById('placeName').textContent = place.name;
       document.getElementById('placeAddr').textContent = place.address;
       document.getElementById('selectedPlace').classList.remove('hidden');
-      await initMap('map', { lat: place.lat, lng: place.lng, level: 3 });
+      await ensureMap(place.lat, place.lng, 3);
       setMarker(place.lat, place.lng, place.name);
     }
 
