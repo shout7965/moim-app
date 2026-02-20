@@ -46,7 +46,7 @@
       <div class="input-group">
         <label class="input-label">장소</label>
         <div class="input-row">
-          <input class="input" id="placeSearch" placeholder="장소 검색..." />
+        <input class="input" id="placeSearch" placeholder="장소 검색 또는 지도에서 핀 지정" />
           <button class="btn btn-secondary btn-sm" id="searchPlaceBtn" style="flex-shrink:0;white-space:nowrap">검색</button>
         </div>
       </div>
@@ -177,13 +177,18 @@
       if (!mapClickBound) {
         kakao.maps.event.addListener(mapInstance, 'click', (mouseEvent) => {
           const latlng = mouseEvent.latLng;
-          const place = {
+          const lat = latlng.getLat();
+          const lng = latlng.getLng();
+          selectedPlace = {
             name: '지도에서 지정',
-            address: '직접 지정',
-            lat: latlng.getLat(),
-            lng: latlng.getLng(),
+            address: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+            lat,
+            lng,
           };
-          selectPlace(place);
+          document.getElementById('placeName').textContent = selectedPlace.name;
+          document.getElementById('placeAddr').textContent = selectedPlace.address;
+          document.getElementById('selectedPlace').classList.remove('hidden');
+          setMarker(lat, lng, selectedPlace.name);
         });
         mapClickBound = true;
       }
