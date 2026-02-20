@@ -41,6 +41,9 @@ export default {
     if (path === '/api/transit-eta' && request.method === 'GET') {
       return handleTransitEta(request, env);
     }
+    if (path === '/api/search-places' && request.method === 'GET') {
+      return handleSearchPlaces(request, env);
+    }
 
     return err('Not found', 404);
   },
@@ -163,6 +166,36 @@ async function handleTransitEta(request, env) {
   if (durationSec == null) return err('No route found');
 
   return json({ minutes: Math.ceil(durationSec / 60) });
+}
+
+// ===== GET /api/search-places =====
+// Query: q (검색어)
+// 카카오 Local REST API 키워드 검색 (도메인 제한 없음)
+async function handleSearchPlaces(request, env) {
+  const url = new URL(request.url);
+  const q   = url.searchParams.get('q');
+  if (!q) return err('q required');
+
+  const apiUrl = new URL('https://dapi.kakao.com/v2/local/search/keyword.json');
+  apiUrl.searchParams.set('query', q);
+  apiUrl.searchParams.set('size',  '8');
+
+  const res = await fetch(apiUrl.toString(), {
+    headers: { Authorization: `KakaoAK ${env.KAKAO_REST_API_KEY}` },
+  });
+
+  if (!res.ok) return err(`Kakao Local API error: ${res.status}`, res.status);
+
+  const data = await res.json();
+  const results = (data.documents || []).map(d => ({
+    name:    d.place_name,
+    address: d.road_address_name || d.address_name,
+    lat:     parseFloat(d.y),
+    lng:     parseFloat(d.x),
+    id:      d.id,
+  }));
+
+  return json({ results });
 }
 
 // ===== Google OAuth JWT Helper =====
