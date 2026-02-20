@@ -3,6 +3,7 @@ import { KAKAO_JS_KEY } from './firebase-config.js';
 
 let mapInstance = null;
 let markerInstance = null;
+let infoWindowInstance = null;
 let routePolyline = null;
 
 // 카카오맵 SDK 로드
@@ -46,12 +47,28 @@ export function setMarker(lat, lng, label = '') {
   }
   mapInstance.setCenter(pos);
 
+  // 기존 InfoWindow 닫기
+  if (infoWindowInstance) {
+    infoWindowInstance.close();
+    infoWindowInstance = null;
+  }
+
   if (label) {
-    const info = new kakao.maps.InfoWindow({ content: `<div style="padding:4px 8px;font-size:12px">${label}</div>` });
-    info.open(mapInstance, markerInstance);
+    infoWindowInstance = new kakao.maps.InfoWindow({
+      content: `<div style="padding:6px 12px;font-size:13px;font-weight:700;color:#222;text-align:center;white-space:nowrap">${label}</div>`,
+    });
+    infoWindowInstance.open(mapInstance, markerInstance);
   }
 
   return markerInstance;
+}
+
+// InfoWindow 닫기
+export function closeInfoWindow() {
+  if (infoWindowInstance) {
+    infoWindowInstance.close();
+    infoWindowInstance = null;
+  }
 }
 
 // 커스텀 마커 (멤버 위치 표시용)
