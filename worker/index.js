@@ -257,11 +257,13 @@ async function handleRoute(request, env) {
         durationSec = res.durationSec;
       }
     } else if (t === 'walk' || t === 'bike') {
-      // 도보/자전거 → OSRM 공개 라우터 (폴리라인)
-      const profile = t === 'walk' ? 'walking' : 'cycling';
-      const res = await getOsrmRoute(profile, origin, destination, { withPath });
+      // 도보/자전거 → OSRM 공개 라우터 (cycling 프로파일이 walking과 동일하므로 walking 사용)
+      const res = await getOsrmRoute('walking', origin, destination, { withPath });
       path = res.path;
-      durationSec = res.durationSec;
+      // 자전거는 도보의 3배 속도(15km/h vs 5km/h)로 ETA 환산
+      durationSec = res.durationSec != null
+        ? (t === 'bike' ? Math.round(res.durationSec / 3) : res.durationSec)
+        : null;
     } else {
       return json({ path: straight, straight: true, durationSec: null });
     }
