@@ -55,7 +55,7 @@ export function setMarker(lat, lng, label = '') {
 
   if (label) {
     infoWindowInstance = new kakao.maps.InfoWindow({
-      content: `<div style="padding:6px 12px;font-size:13px;font-weight:700;color:#222;text-align:center;white-space:nowrap">${label}</div>`,
+      content: `<div style="display:inline-block;padding:6px 12px;font-size:13px;font-weight:700;color:#222;white-space:nowrap">${label}</div>`,
     });
     infoWindowInstance.open(mapInstance, markerInstance);
   }
