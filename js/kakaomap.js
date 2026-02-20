@@ -47,26 +47,53 @@ export function setMarker(lat, lng, label = '') {
   }
   mapInstance.setCenter(pos);
 
-  // 기존 InfoWindow 닫기
+  // 기존 오버레이 제거
   if (infoWindowInstance) {
-    infoWindowInstance.close();
+    infoWindowInstance.setMap(null);
     infoWindowInstance = null;
   }
 
   if (label) {
-    infoWindowInstance = new kakao.maps.InfoWindow({
-      content: `<div style="display:inline-block;padding:6px 12px;font-size:13px;font-weight:700;color:#222;white-space:nowrap">${label}</div>`,
+    // InfoWindow 대신 CustomOverlay 사용 → 텍스트 너비에 딱 맞게 제어 가능
+    const content = `
+      <div style="text-align:center">
+        <div style="
+          display:inline-block;
+          background:#fff;
+          border:1px solid #d0d0d0;
+          border-radius:8px;
+          padding:6px 14px;
+          font-size:13px;
+          font-weight:700;
+          color:#222;
+          white-space:nowrap;
+          box-shadow:0 2px 8px rgba(0,0,0,0.15);
+        ">${label}</div>
+        <div style="
+          width:0;height:0;
+          border-left:8px solid transparent;
+          border-right:8px solid transparent;
+          border-top:8px solid #d0d0d0;
+          margin:0 auto;
+        "></div>
+        <div style="height:38px"></div>
+      </div>`;
+    infoWindowInstance = new kakao.maps.CustomOverlay({
+      position: pos,
+      content,
+      yAnchor: 1,
+      zIndex: 1,
     });
-    infoWindowInstance.open(mapInstance, markerInstance);
+    infoWindowInstance.setMap(mapInstance);
   }
 
   return markerInstance;
 }
 
-// InfoWindow 닫기
+// 오버레이 닫기
 export function closeInfoWindow() {
   if (infoWindowInstance) {
-    infoWindowInstance.close();
+    infoWindowInstance.setMap(null);
     infoWindowInstance = null;
   }
 }
