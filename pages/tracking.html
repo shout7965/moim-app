@@ -181,8 +181,9 @@
     const destLat   = meeting.place?.lat;
     const destLng   = meeting.place?.lng;
 
-    let myLastLat = null;
-    let myLastLng = null;
+    // Firestore에 이미 저장된 내 위치로 초기화 (페이지 로드 직후에도 경로 표시 가능)
+    let myLastLat = myMember?.lat || null;
+    let myLastLng = myMember?.lng || null;
     let routeVisible = false;
     const ROUTE_COLOR = { walk: '#22c55e', bike: '#06b6d4', transit: '#6c63ff' };
 
