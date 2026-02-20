@@ -4,7 +4,7 @@ import {
   doc, collection, getDoc, setDoc, updateDoc, deleteDoc,
   addDoc, query, where, orderBy, limit,
   onSnapshot, serverTimestamp, arrayUnion, arrayRemove,
-  getDocs, writeBatch,
+  getDocs, writeBatch, collectionGroup, FieldPath,
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 // ===== Users =====
@@ -173,4 +173,28 @@ export const inviteMember = async (meetingId, uid, nickname, profileImg, meeting
   });
 
   await batch.commit();
+};
+
+// 누락된 userMeetings 인덱스를 복구 (내 멤버십 기준)
+export const syncUserMeetings = async (uid) => {
+  const q = query(collectionGroup(db, 'members'), where(FieldPath.documentId(), '==', uid));
+  const snap = await getDocs(q);
+  if (snap.empty) return;
+
+  await Promise.all(snap.docs.map(async (memberDoc) => {
+    const meetingId = memberDoc.ref.parent.parent?.id;
+    if (!meetingId) return;
+    const meeting = await getMeeting(meetingId);
+    if (!meeting) return;
+    await setDoc(doc(db, 'userMeetings', `${uid}_${meetingId}`), {
+      uid,
+      meetingId,
+      title: meeting.title || '(알 수 없는 약속)',
+      status: meeting.status || 'pending',
+      scheduledAt: meeting.scheduledAt || null,
+      placeName: meeting.place?.name || null,
+      placeAddress: meeting.place?.address || null,
+      createdAt: meeting.createdAt || serverTimestamp(),
+    }, { merge: true });
+  }));
 };
