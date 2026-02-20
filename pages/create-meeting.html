@@ -188,7 +188,7 @@
           document.getElementById('placeName').textContent = selectedPlace.name;
           document.getElementById('placeAddr').textContent = selectedPlace.address;
           document.getElementById('selectedPlace').classList.remove('hidden');
-          setMarker(lat, lng, selectedPlace.name);
+          setMarker(lat, lng, '');
         });
         mapClickBound = true;
       }
