@@ -95,6 +95,9 @@
     const meetingId = getParam('id');
     const isEdit = !!meetingId;
     let editingMeeting = null;
+    let mapInstance = null;
+    let mapClickBound = false;
+    let searchBtnBusy = false;
 
     try {
       const s = await requireAuth();
@@ -145,10 +148,6 @@
       document.getElementById('dateTimeInput').value =
         defaultDt.toISOString().slice(0, 16);
     }
-
-    let mapInstance = null;
-    let mapClickBound = false;
-    let searchBtnBusy = false;
 
     // 장소 검색
     document.getElementById('searchPlaceBtn').addEventListener('click', () => {
