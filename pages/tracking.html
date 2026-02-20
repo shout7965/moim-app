@@ -52,6 +52,7 @@
         <div class="status-dot dot-green dot-pulse"></div>
         <span class="text-xs text-green">실시간</span>
       </div>
+      <button class="btn-icon-round" onclick="stopAndGoHome()" title="홈으로">🏠</button>
     </div>
   </div>
 
@@ -266,7 +267,12 @@
       stopLocationTracking();
       location.href = `/pages/meeting.html?id=${meetingId}`;
     }
+    function stopAndGoHome() {
+      stopLocationTracking();
+      location.href = '/pages/home.html';
+    }
     window.stopAndGoBack = stopAndGoBack;
+    window.stopAndGoHome = stopAndGoHome;
 
     // 페이지 언로드 시 추적 중지
     window.addEventListener('beforeunload', stopLocationTracking);

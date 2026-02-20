@@ -10,6 +10,10 @@
   <div class="page page-with-nav">
     <div class="page-header">
       <h1>친구</h1>
+      <div id="profileArea" style="display:flex;align-items:center;gap:8px">
+        <div class="avatar" id="myAvatar">?</div>
+        <button class="btn btn-secondary btn-sm" id="logoutBtn" style="display:none">로그아웃</button>
+      </div>
     </div>
 
     <div class="page-content">
@@ -62,8 +66,9 @@
   </nav>
 
   <script type="module">
-    import { requireAuth }           from '/main.js';
-    import { showToast, copyToClipboard } from '/main.js';
+    import { requireAuth, showToast, copyToClipboard } from '/main.js';
+    import { signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+    import { auth } from '/js/firebase-config.js';
     import { addFriendByCode, shareMyCode } from '/js/invite.js';
     import { getFriends, updateUser }  from '/js/db.js';
 
@@ -83,6 +88,24 @@
       myUid     = session.user.uid;
       myProfile = session.profile;
     } catch { window.location.href = '/index.html'; }
+
+    // 프로필 표시
+    const avatar = document.getElementById('myAvatar');
+    if (myProfile.profileImg) {
+      avatar.innerHTML = `<img src="${myProfile.profileImg}" alt="">`;
+    } else {
+      avatar.textContent = myProfile.nickname?.[0] || '?';
+    }
+    avatar.addEventListener('click', () => {
+      document.getElementById('logoutBtn').style.display =
+        document.getElementById('logoutBtn').style.display === 'none' ? '' : 'none';
+    });
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      if (confirm('로그아웃 하시겠습니까?')) {
+        await signOut(auth);
+        location.href = '/index.html';
+      }
+    });
 
     // 내 코드 표시
     myCodeEl.textContent = myProfile.inviteCode || '------';
