@@ -208,7 +208,7 @@
     document.getElementById('centerBtn').addEventListener('click', async () => {
       try {
         await centerOnMyLocation();
-      } catch { showToast('위치를 가져올 수 없습니다', 'error'); }
+      } catch (e) { showToast(e.message || '위치를 가져올 수 없습니다', 'error'); }
     });
 
     function stopAndGoBack() {

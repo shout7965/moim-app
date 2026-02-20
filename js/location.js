@@ -30,11 +30,14 @@ export function startLocationTracking(meetingId, uid, onUpdate, onEtaUpdate) {
     async (pos) => {
       const { latitude: lat, longitude: lng, accuracy } = pos.coords;
 
-      // 정확도가 너무 낮으면 건너뜀 (100m 이상)
-      if (accuracy > 100) return;
+      const isFirstFix = lastLat === null;
 
-      // 50m 미만 이동이면 업로드 생략
-      if (lastLat !== null && lastLng !== null) {
+      // 첫 위치는 정확도 무관하게 무조건 업로드 (준비 중 해제)
+      // 이후엔 500m 이상 부정확하면 건너뜀
+      if (!isFirstFix && accuracy > 500) return;
+
+      // 첫 위치가 아닌 경우 50m 미만 이동이면 업로드 생략
+      if (!isFirstFix) {
         const dist = haversineMeters(lastLat, lastLng, lat, lng);
         if (dist < MIN_DISTANCE_METERS) return;
       }

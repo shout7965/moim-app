@@ -96,9 +96,25 @@ export function centerOnMyLocation() {
     if (!navigator.geolocation) { reject(new Error('Geolocation not supported')); return; }
     navigator.geolocation.getCurrentPosition((pos) => {
       const { latitude: lat, longitude: lng } = pos.coords;
-      if (mapInstance) mapInstance.setCenter(new kakao.maps.LatLng(lat, lng));
+      if (mapInstance) {
+        const latLng = new kakao.maps.LatLng(lat, lng);
+        mapInstance.setCenter(latLng);
+        mapInstance.setLevel(4);
+        // 지도 컨테이너 크기 재계산 후 렌더링 갱신
+        mapInstance.relayout();
+        mapInstance.setCenter(latLng);
+      }
       resolve({ lat, lng });
-    }, reject, { enableHighAccuracy: true, timeout: 10000 });
+    }, (err) => {
+      // GeolocationPositionError 코드별 메시지
+      const msg = [
+        '',
+        '위치 권한이 거부되었습니다. 브라우저 설정에서 허용해주세요.',
+        '위치를 가져올 수 없습니다.',
+        '위치 요청 시간이 초과됐습니다.',
+      ][err.code] || '위치 오류';
+      reject(new Error(msg));
+    }, { enableHighAccuracy: true, timeout: 10000 });
   });
 }
 
