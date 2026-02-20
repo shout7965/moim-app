@@ -198,6 +198,7 @@
       };
       const [badgeClass, badgeText] = badgeMap[m.status] || badgeMap.pending;
       const isHost = m.hostId === myUid;
+      const canEdit = isHost && m.status !== 'done';
 
       return `
         <div class="meeting-card" data-id="${m.id}">
@@ -207,7 +208,7 @@
               <span class="meeting-badge ${badgeClass}">${badgeText}</span>
               ${isHost ? `
                 <div class="meeting-actions">
-                  <button class="meeting-action-btn" data-action="edit" title="수정">✏️</button>
+                  ${canEdit ? '<button class="meeting-action-btn" data-action="edit" title="수정">✏️</button>' : ''}
                   <button class="meeting-action-btn" data-action="delete" title="삭제">✖</button>
                 </div>
               ` : ''}

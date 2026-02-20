@@ -235,15 +235,27 @@ async function handleRoute(request, env) {
     let durationSec = null;
 
     if (t === 'transit') {
-      // 대중교통 → 카카오 모빌리티 transit API로 정류장 경유점 추출
-      const res = await getTransitRoute(origin, destination, env, { withPath });
-      path = res.path;
-      durationSec = res.durationSec;
+      // 대중교통 → 카카오 모빌리티 transit API 우선, 실패 시 도보 경로로 대체
+      try {
+        const res = await getTransitRoute(origin, destination, env, { withPath });
+        path = res.path;
+        durationSec = res.durationSec;
+      } catch {
+        const res = await getOsrmRoute('walking', origin, destination, { withPath });
+        path = res.path;
+        durationSec = res.durationSec;
+      }
     } else if (t === 'car') {
-      // 자가용 → 카카오 모빌리티 자동차 길찾기
-      const res = await getCarRoute(origin, destination, env, { withPath });
-      path = res.path;
-      durationSec = res.durationSec;
+      // 자가용 → 카카오 모빌리티 자동차 길찾기 우선, 실패 시 OSRM driving
+      try {
+        const res = await getCarRoute(origin, destination, env, { withPath });
+        path = res.path;
+        durationSec = res.durationSec;
+      } catch {
+        const res = await getOsrmRoute('driving', origin, destination, { withPath });
+        path = res.path;
+        durationSec = res.durationSec;
+      }
     } else if (t === 'walk' || t === 'bike') {
       // 도보/자전거 → OSRM 공개 라우터 (폴리라인)
       const profile = t === 'walk' ? 'walking' : 'cycling';
@@ -257,10 +269,6 @@ async function handleRoute(request, env) {
     if (path.length > 2) return json({ path, straight: false, durationSec });
     return json({ path: straight, straight: true, durationSec });
   } catch (e) {
-    const isTransit = (transport || 'walk') === 'transit';
-    if (isTransit) {
-      return json({ path: straight, straight: true, durationSec: null, error: 'transit_route_failed' });
-    }
     return json({ path: straight, straight: true, durationSec: null });
   }
 }
