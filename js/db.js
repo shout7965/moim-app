@@ -79,18 +79,24 @@ export const subscribeMyMeetings = (uid, callback) => {
     const meetingIds = userMeetingDocs.map(d => d.data().meetingId);
     let userMeetings = [];
     if (meetingIds.length) {
-      const meetings = await Promise.all(meetingIds.map(id => getMeeting(id).catch(() => null)));
-      userMeetings = meetings.map((m, i) => {
-        if (m) return m;
-        const data = userMeetingDocs[i]?.data?.() || {};
-        return {
-          id: data.meetingId || meetingIds[i],
-          title: data.title || '(알 수 없는 약속)',
-          status: data.status || 'pending',
-          scheduledAt: data.scheduledAt || null,
-          place: data.placeName ? { name: data.placeName, address: data.placeAddress || '' } : null,
-        };
-      }).filter(Boolean);
+      const meetings = await Promise.all(userMeetingDocs.map(async (docSnap) => {
+        const id = docSnap.data().meetingId;
+        try {
+          const m = await getMeeting(id);
+          if (!m) {
+            // 삭제된 약속이면 userMeetings 정리
+            if (docSnap.data().uid === uid) {
+              await deleteDoc(docSnap.ref).catch(() => {});
+            }
+            return null;
+          }
+          return m;
+        } catch (e) {
+          console.warn('getMeeting error:', e);
+          return null;
+        }
+      }));
+      userMeetings = meetings.filter(Boolean);
     }
 
     const byId = new Map();
