@@ -257,7 +257,11 @@ async function handleRoute(request, env) {
 
     if (path.length > 2) return json({ path, straight: false });
     return json({ path: straight, straight: true });
-  } catch {
+  } catch (e) {
+    const isTransit = (transport || 'walk') === 'transit';
+    if (isTransit) {
+      return json({ path: straight, straight: true, error: 'transit_route_failed' });
+    }
     return json({ path: straight, straight: true });
   }
 }

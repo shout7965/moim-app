@@ -194,6 +194,13 @@
         const res  = await fetch(`${WORKER_URL}/api/route?origin_lat=${myLastLat}&origin_lng=${myLastLng}&dest_lat=${destLat}&dest_lng=${destLng}&transport=${transport}`);
         const data = await res.json();
         if (data.path?.length) drawRoute(data.path, ROUTE_COLOR[transport] || '#6c63ff', data.straight);
+        if (transport === 'transit' && data.straight && data.error === 'transit_route_failed') {
+          const now = Date.now();
+          if (now - lastRouteErrorAt > 15000) {
+            lastRouteErrorAt = now;
+            showToast('대중교통 경로를 불러오지 못했습니다. 모빌리티 권한을 확인해주세요.', 'error', 4500);
+          }
+        }
       } catch (e) {
         console.warn('Route error:', e);
         const now = Date.now();
