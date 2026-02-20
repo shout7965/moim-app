@@ -118,4 +118,14 @@ export function centerOnMyLocation() {
   });
 }
 
+// 특정 좌표로 지도 이동
+export function centerMapAt(lat, lng, level) {
+  if (!mapInstance) return;
+  const latLng = new kakao.maps.LatLng(lat, lng);
+  if (level) mapInstance.setLevel(level);
+  mapInstance.setCenter(latLng);
+  mapInstance.relayout();
+  mapInstance.setCenter(latLng);
+}
+
 export function getMap() { return mapInstance; }

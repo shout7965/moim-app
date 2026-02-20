@@ -74,7 +74,7 @@
   <script type="module">
     import { requireAuth, showToast, getParam, formatDateTime } from '/main.js';
     import { getMeeting, getMember, setMember, subscribeMembers, updateMeeting } from '/js/db.js';
-    import { initMap, setMarker, addMemberMarker, centerOnMyLocation, getMap } from '/js/kakaomap.js';
+    import { initMap, setMarker, addMemberMarker, centerMapAt, getMap } from '/js/kakaomap.js';
     import { startLocationTracking, stopLocationTracking } from '/js/location.js';
     import { calcEta, etaLabel, etaClass } from '/js/eta.js';
     import { WORKER_URL } from '/js/firebase-config.js';
@@ -180,10 +180,14 @@
     const destLat   = meeting.place?.lat;
     const destLng   = meeting.place?.lng;
 
+    let myLastLat = null;
+    let myLastLng = null;
+
     startLocationTracking(
       meetingId, myUid,
       (lat, lng) => {
-        // 내 마커는 지도에서 이미 subscribeMembers에서 처리
+        myLastLat = lat;
+        myLastLng = lng;
         if (!memberColorMap[myUid]) memberColorMap[myUid] = COLORS[0];
       },
       async (lat, lng) => {
@@ -205,10 +209,12 @@
     });
 
     // 내 위치로 이동
-    document.getElementById('centerBtn').addEventListener('click', async () => {
-      try {
-        await centerOnMyLocation();
-      } catch (e) { showToast(e.message || '위치를 가져올 수 없습니다', 'error'); }
+    document.getElementById('centerBtn').addEventListener('click', () => {
+      if (myLastLat && myLastLng) {
+        centerMapAt(myLastLat, myLastLng, 4);
+      } else {
+        showToast('아직 위치를 받아오는 중입니다', 'info');
+      }
     });
 
     function stopAndGoBack() {
