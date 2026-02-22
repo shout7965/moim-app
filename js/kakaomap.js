@@ -12,7 +12,7 @@ export function loadKakaoMapSDK() {
     if (window.kakao?.maps) { resolve(); return; }
     const s = document.createElement('script');
     // &autoload=false 로 수동 로드 후 kakao.maps.load() 호출
-    s.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&libraries=services&autoload=false`;
+    s.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&libraries=services&autoload=false`;
     s.onload = () => {
       kakao.maps.load(() => resolve());
     };
