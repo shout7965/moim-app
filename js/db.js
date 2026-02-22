@@ -179,6 +179,35 @@ export const inviteMember = async (meetingId, uid, nickname, profileImg, meeting
   await batch.commit();
 };
 
+// 딥링크 참여: 멤버 추가 + userMeetings 기록 (본인 기준)
+export const joinMeetingByLink = async (meetingId, uid, profile, meeting = {}, status = 'invited') => {
+  const batch = writeBatch(db);
+  const nickname = profile?.nickname || '익명';
+  const profileImg = profile?.profileImg || null;
+
+  batch.set(doc(db, 'meetings', meetingId, 'members', uid), {
+    nickname,
+    profileImg,
+    status,
+    transport: null,
+    lat: null, lng: null, eta: null,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+
+  batch.set(doc(db, 'userMeetings', `${uid}_${meetingId}`), {
+    uid, meetingId,
+    title:     meeting.title || '(알 수 없는 약속)',
+    status:    meeting.status || 'pending',
+    scheduledAt: meeting.scheduledAt || null,
+    placeName: meeting.place?.name || meeting.placeName || null,
+    placeAddress: meeting.place?.address || meeting.placeAddress || null,
+    hostId:    meeting.hostId || null,
+    createdAt: serverTimestamp(),
+  }, { merge: true });
+
+  await batch.commit();
+};
+
 // 누락된 userMeetings 인덱스를 복구 — userMeetings 기반 자가 검증
 export const syncUserMeetings = async (uid) => {
   // userMeetings는 inviteMember/createMeeting 시 자동 생성됨
@@ -207,6 +236,36 @@ export const getOrCreateChat = async (myUid, otherUid, myInfo, otherInfo) => {
     });
   }
   return chatId;
+};
+
+export const getChat = (chatId) =>
+  getDoc(doc(db, 'chats', chatId)).then(s => s.exists() ? { id: s.id, ...s.data() } : null);
+
+export const createGroupChat = async (myUid, myProfile, members, name = '') => {
+  const uniq = new Map();
+  uniq.set(myUid, { uid: myUid, nickname: myProfile.nickname, profileImg: myProfile.profileImg || null });
+  (members || []).forEach(m => {
+    if (m?.uid && !uniq.has(m.uid)) {
+      uniq.set(m.uid, { uid: m.uid, nickname: m.nickname, profileImg: m.profileImg || null });
+    }
+  });
+  const list = Array.from(uniq.values());
+  if (list.length < 2) throw new Error('그룹 채팅은 2명 이상 필요합니다.');
+
+  const memberInfo = {};
+  list.forEach(m => { memberInfo[m.uid] = { nickname: m.nickname, profileImg: m.profileImg || null }; });
+
+  const chatRef = doc(collection(db, 'chats'));
+  await setDoc(chatRef, {
+    type: 'group',
+    name: name || `단체 대화 (${list.length}명)`,
+    members: list.map(m => m.uid),
+    memberInfo,
+    lastMessage: null,
+    lastAt:      null,
+    createdAt:   serverTimestamp(),
+  });
+  return chatRef.id;
 };
 
 export const sendMessage = async (chatId, uid, text) => {

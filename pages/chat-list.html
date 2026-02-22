@@ -10,6 +10,7 @@
   <div class="page page-with-nav">
     <div class="page-header">
       <h1>채팅</h1>
+      <button class="btn btn-primary btn-sm" id="newChatBtn">대화 생성</button>
     </div>
 
     <div class="page-content">
@@ -19,6 +20,21 @@
           <div class="empty-state-title">아직 대화가 없어요</div>
           <div class="empty-state-sub">친구 목록에서 채팅을 시작해보세요</div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 대화 생성 모달 -->
+  <div id="newChatModal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-title">대화 생성</div>
+      <div id="newChatList" style="max-height:320px;overflow-y:auto"></div>
+      <div class="input-row" style="margin-top:10px">
+        <input class="input" id="groupNameInput" placeholder="단체방 이름 (선택)" maxlength="20" />
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-secondary btn-sm" style="flex:1" id="newChatCancelBtn">닫기</button>
+        <button class="btn btn-primary btn-sm" style="flex:1" id="newChatConfirmBtn">시작</button>
       </div>
     </div>
   </div>
@@ -42,13 +58,68 @@
 
   <script type="module">
     import { requireAuth, showToast } from '/main.js';
-    import { subscribeChats } from '/js/db.js';
+    import { subscribeChats, getFriends, createGroupChat } from '/js/db.js';
 
-    let myUid;
+    let myUid, myProfile;
     try {
       const s = await requireAuth();
       myUid = s.user.uid;
+      myProfile = s.profile;
     } catch { location.href = '/index.html'; }
+
+    const newChatBtn = document.getElementById('newChatBtn');
+    const newChatModal = document.getElementById('newChatModal');
+    const newChatList = document.getElementById('newChatList');
+    const newChatCancelBtn = document.getElementById('newChatCancelBtn');
+    const newChatConfirmBtn = document.getElementById('newChatConfirmBtn');
+    const groupNameInput = document.getElementById('groupNameInput');
+    let friendsCache = [];
+
+    function renderNewChatList() {
+      if (!friendsCache.length) {
+        newChatList.innerHTML = '<div class="text-sm text-muted" style="padding:8px 0">친구가 없습니다.</div>';
+        return;
+      }
+      newChatList.innerHTML = friendsCache.map(f => `
+        <label class="friend-item" style="cursor:pointer;gap:8px">
+          <input type="checkbox" data-uid="${f.uid}">
+          <div class="avatar">
+            ${f.profileImg ? `<img src="${f.profileImg}" alt="" />` : f.nickname?.[0] || '?'}
+          </div>
+          <div class="friend-info">
+            <div class="friend-name">${f.nickname}</div>
+            <div class="text-xs text-muted">${f.inviteCode || ''}</div>
+          </div>
+        </label>
+      `).join('');
+    }
+
+    newChatBtn.addEventListener('click', async () => {
+      if (!friendsCache.length) friendsCache = await getFriends(myProfile.friends || []);
+      renderNewChatList();
+      groupNameInput.value = '';
+      newChatModal.classList.remove('hidden');
+    });
+    newChatCancelBtn.addEventListener('click', () => newChatModal.classList.add('hidden'));
+    newChatConfirmBtn.addEventListener('click', async () => {
+      const checked = [...newChatList.querySelectorAll('input[type="checkbox"]:checked')];
+      if (!checked.length) { showToast('친구를 선택하세요', 'error'); return; }
+      const uids = checked.map(c => c.dataset.uid);
+      if (uids.length === 1) {
+        newChatModal.classList.add('hidden');
+        location.href = `/pages/chat.html?uid=${uids[0]}`;
+        return;
+      }
+      const members = friendsCache.filter(f => uids.includes(f.uid));
+      const name = groupNameInput.value.trim();
+      try {
+        const chatId = await createGroupChat(myUid, myProfile, members, name);
+        newChatModal.classList.add('hidden');
+        location.href = `/pages/chat.html?chatId=${chatId}`;
+      } catch (e) {
+        showToast('생성 실패: ' + e.message, 'error');
+      }
+    });
 
     subscribeChats(myUid, (chats) => {
       const el = document.getElementById('chatList');
@@ -62,11 +133,19 @@
         return;
       }
       el.innerHTML = chats.map(c => {
-        const otherUid = c.members.find(u => u !== myUid);
-        const other    = c.memberInfo?.[otherUid] || {};
-        const avatarHtml = other.profileImg
-          ? `<img src="${other.profileImg}">`
-          : (other.nickname?.[0] || '?');
+        const isGroup = c.type === 'group' || (c.members || []).length > 2 || c.name;
+        let title = '-';
+        let avatarHtml = '👥';
+        let href = `/pages/chat.html?chatId=${c.id}`;
+        if (!isGroup) {
+          const otherUid = c.members.find(u => u !== myUid);
+          const other    = c.memberInfo?.[otherUid] || {};
+          title = other.nickname || '-';
+          avatarHtml = other.profileImg ? `<img src="${other.profileImg}">` : (other.nickname?.[0] || '?');
+          href = `/pages/chat.html?uid=${otherUid}`;
+        } else {
+          title = c.name || '단체 대화';
+        }
         const lastMsg  = c.lastMessage || '대화를 시작해보세요';
         const lastTime = c.lastAt?.toDate
           ? (() => {
@@ -79,11 +158,11 @@
             })()
           : '';
         return `
-          <div class="chat-list-item" onclick="location.href='/pages/chat.html?uid=${otherUid}'">
+          <div class="chat-list-item" onclick="location.href='${href}'">
             <div class="avatar">${avatarHtml}</div>
             <div style="flex:1;min-width:0">
               <div style="display:flex;justify-content:space-between;align-items:center">
-                <span class="font-bold text-sm">${other.nickname || '-'}</span>
+                <span class="font-bold text-sm">${escHtml(title)}</span>
                 <span style="font-size:11px;color:var(--text3)">${lastTime}</span>
               </div>
               <div class="chat-last-msg">${escHtml(lastMsg)}</div>

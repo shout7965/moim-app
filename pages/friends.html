@@ -47,6 +47,28 @@
           <div class="empty-state-sub">초대코드로 친구를 추가해보세요</div>
         </div>
       </div>
+
+      <!-- 내 그룹 -->
+      <div class="section-title" style="margin-top:16px">내 그룹</div>
+      <div class="card-sm">
+        <div class="input-row">
+          <input class="input" id="groupNameInput" placeholder="새 그룹 이름" maxlength="20" />
+          <button class="btn btn-primary btn-sm" id="addGroupBtn" style="flex-shrink:0;white-space:nowrap">추가</button>
+        </div>
+        <div id="groupList" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 그룹 지정 모달 -->
+  <div id="groupModal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-title">그룹 지정</div>
+      <div id="groupModalList" style="max-height:320px;overflow-y:auto"></div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-secondary btn-sm" style="flex:1" id="groupCancelBtn">닫기</button>
+        <button class="btn btn-primary btn-sm" style="flex:1" id="groupSaveBtn">저장</button>
+      </div>
     </div>
   </div>
 
@@ -84,6 +106,13 @@
     const shareCodeBtn = document.getElementById('shareCodeBtn');
     const friendList   = document.getElementById('friendList');
     const friendCount  = document.getElementById('friendCount');
+    const groupNameInput = document.getElementById('groupNameInput');
+    const addGroupBtn    = document.getElementById('addGroupBtn');
+    const groupListEl    = document.getElementById('groupList');
+    const groupModal     = document.getElementById('groupModal');
+    const groupModalList = document.getElementById('groupModalList');
+    const groupCancelBtn = document.getElementById('groupCancelBtn');
+    const groupSaveBtn   = document.getElementById('groupSaveBtn');
 
     // 인증 확인
     try {
@@ -143,6 +172,89 @@
       }
     });
 
+    // 그룹 상태
+    let friendGroups = Array.isArray(myProfile.friendGroups) ? myProfile.friendGroups : [];
+    let currentGroupTargetUid = null;
+
+    function saveGroups() {
+      myProfile.friendGroups = friendGroups;
+      return updateUser(myUid, { friendGroups });
+    }
+
+    function renderGroups() {
+      if (!friendGroups.length) {
+        groupListEl.innerHTML = '<div class="text-xs text-muted">아직 그룹이 없습니다.</div>';
+        return;
+      }
+      groupListEl.innerHTML = friendGroups.map(g => `
+        <div class="badge badge-gray" style="display:inline-flex;align-items:center;gap:6px">
+          ${g.name} <span class="text-xs text-muted">(${(g.memberUids || []).length})</span>
+          <button class="btn-icon-round" data-gid="${g.id}" title="삭제" style="width:18px;height:18px;font-size:12px">✖</button>
+        </div>
+      `).join('');
+      groupListEl.querySelectorAll('button[data-gid]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const gid = btn.dataset.gid;
+          if (!confirm('그룹을 삭제하시겠습니까?')) return;
+          friendGroups = friendGroups.filter(g => g.id !== gid);
+          await saveGroups();
+          renderGroups();
+          renderFriends();
+        });
+      });
+    }
+
+    addGroupBtn.addEventListener('click', async () => {
+      const name = groupNameInput.value.trim();
+      if (!name) { showToast('그룹 이름을 입력하세요', 'error'); return; }
+      if (friendGroups.some(g => g.name === name)) {
+        showToast('같은 이름의 그룹이 있습니다', 'error'); return;
+      }
+      const id = `g_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+      friendGroups.push({ id, name, memberUids: [] });
+      groupNameInput.value = '';
+      await saveGroups();
+      renderGroups();
+    });
+
+    groupCancelBtn.addEventListener('click', () => groupModal.classList.add('hidden'));
+    groupSaveBtn.addEventListener('click', async () => {
+      if (!currentGroupTargetUid) return;
+      const checks = [...groupModalList.querySelectorAll('input[type="checkbox"]')];
+      const checkedIds = new Set(checks.filter(c => c.checked).map(c => c.dataset.gid));
+      friendGroups = friendGroups.map(g => {
+        const set = new Set(g.memberUids || []);
+        if (checkedIds.has(g.id)) set.add(currentGroupTargetUid);
+        else set.delete(currentGroupTargetUid);
+        return { ...g, memberUids: Array.from(set) };
+      });
+      await saveGroups();
+      groupModal.classList.add('hidden');
+      renderGroups();
+      renderFriends();
+    });
+
+    function openGroupModal(uid) {
+      currentGroupTargetUid = uid;
+      if (!friendGroups.length) {
+        groupModalList.innerHTML = '<div class="text-sm text-muted" style="padding:8px 0">그룹이 없습니다. 먼저 그룹을 추가하세요.</div>';
+      } else {
+        groupModalList.innerHTML = friendGroups.map(g => {
+          const checked = (g.memberUids || []).includes(uid) ? 'checked' : '';
+          return `
+            <label class="friend-item" style="cursor:pointer;gap:8px">
+              <input type="checkbox" data-gid="${g.id}" ${checked}>
+              <div class="friend-info">
+                <div class="friend-name">${g.name}</div>
+                <div class="text-xs text-muted">${(g.memberUids || []).length}명</div>
+              </div>
+            </label>`;
+        }).join('');
+      }
+      groupModal.classList.remove('hidden');
+    }
+
     // 친구 목록 렌더링
     async function renderFriends() {
       const friends = await getFriends(myProfile.friends || []);
@@ -156,7 +268,11 @@
           </div>`;
         return;
       }
-      friendList.innerHTML = friends.map(f => `
+      friendList.innerHTML = friends.map(f => {
+        const groupNames = friendGroups
+          .filter(g => (g.memberUids || []).includes(f.uid))
+          .map(g => g.name);
+        return `
         <div class="friend-item">
           <div class="avatar">
             ${f.profileImg ? `<img src="${f.profileImg}" alt="" />` : f.nickname?.[0] || '?'}
@@ -164,12 +280,22 @@
           <div class="friend-info">
             <div class="friend-name">${f.nickname}</div>
             <div class="friend-code">${f.inviteCode}</div>
+            ${groupNames.length ? `<div class="text-xs text-muted">${groupNames.join(', ')}</div>` : ''}
           </div>
+          <button class="btn btn-secondary btn-sm" data-group-uid="${f.uid}">🏷️</button>
           <button class="btn btn-secondary btn-sm" onclick="location.href='/pages/chat.html?uid=${f.uid}'">💬</button>
         </div>
-      `).join('');
+      `}).join('');
+
+      friendList.querySelectorAll('button[data-group-uid]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openGroupModal(btn.dataset.groupUid);
+        });
+      });
     }
 
+    renderGroups();
     renderFriends();
   </script>
 </body>

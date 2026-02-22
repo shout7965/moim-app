@@ -34,7 +34,7 @@
 
   <script type="module">
     import { requireAuth, showToast, getParam } from '/main.js';
-    import { getUser, getOrCreateChat, sendMessage, subscribeMessages } from '/js/db.js';
+    import { getUser, getOrCreateChat, getChat, sendMessage, subscribeMessages } from '/js/db.js';
 
     // ── DOM refs ──
     const input   = document.getElementById('msgInput');
@@ -42,7 +42,7 @@
     const msgList = document.getElementById('messageList');
 
     // 모듈 스코프 상태 (init 내부에서 설정)
-    let myUid, myProfile, chatId;
+    let myUid, myProfile, chatId, isGroupChat = false, chatMemberInfo = {};
 
     // ── 이벤트 리스너 (항상 먼저 등록) ──
     input.addEventListener('input', () => {
@@ -79,35 +79,50 @@
     // ── 비동기 초기화 (async IIFE) ──
     (async () => {
       const otherUid = getParam('uid');
-      if (!otherUid) { location.href = '/pages/friends.html'; return; }
+      const chatIdParam = getParam('chatId');
+      if (!otherUid && !chatIdParam) { location.href = '/pages/chat-list.html'; return; }
 
       try {
         const s = await requireAuth();
         myUid = s.user.uid; myProfile = s.profile;
       } catch { location.href = '/index.html'; return; }
 
-      let otherProfile;
-      try {
-        otherProfile = await getUser(otherUid);
-      } catch (e) {
-        showToast('사용자 정보를 불러올 수 없습니다', 'error'); return;
-      }
-      if (!otherProfile) {
-        showToast('사용자를 찾을 수 없습니다', 'error');
-        location.href = '/pages/friends.html'; return;
-      }
+      if (chatIdParam) {
+        const chat = await getChat(chatIdParam);
+        if (!chat) { showToast('채팅방을 찾을 수 없습니다', 'error'); location.href = '/pages/chat-list.html'; return; }
+        if (!chat.members?.includes(myUid)) { showToast('접근 권한이 없습니다', 'error'); location.href = '/pages/chat-list.html'; return; }
+        chatId = chat.id;
+        isGroupChat = chat.type === 'group' || (chat.members || []).length > 2 || !!chat.name;
+        chatMemberInfo = chat.memberInfo || {};
+        const title = chat.name || '단체 대화';
+        document.getElementById('otherName').textContent = isGroupChat
+          ? `${title} · ${chat.members.length}명`
+          : (chatMemberInfo[chat.members.find(u => u !== myUid)]?.nickname || '-');
+        document.getElementById('otherAvatar').textContent = isGroupChat ? '👥' : '?';
+      } else {
+        let otherProfile;
+        try {
+          otherProfile = await getUser(otherUid);
+        } catch (e) {
+          showToast('사용자 정보를 불러올 수 없습니다', 'error'); return;
+        }
+        if (!otherProfile) {
+          showToast('사용자를 찾을 수 없습니다', 'error');
+          location.href = '/pages/friends.html'; return;
+        }
 
-      // 헤더 렌더링
-      document.getElementById('otherName').textContent = otherProfile.nickname;
-      const av = document.getElementById('otherAvatar');
-      if (otherProfile.profileImg) av.innerHTML = `<img src="${otherProfile.profileImg}">`;
-      else av.textContent = otherProfile.nickname?.[0] || '?';
+        // 헤더 렌더링
+        document.getElementById('otherName').textContent = otherProfile.nickname;
+        const av = document.getElementById('otherAvatar');
+        if (otherProfile.profileImg) av.innerHTML = `<img src="${otherProfile.profileImg}">`;
+        else av.textContent = otherProfile.nickname?.[0] || '?';
 
-      // 채팅방 생성 or 가져오기
-      try {
-        chatId = await getOrCreateChat(myUid, otherUid, myProfile, otherProfile);
-      } catch (e) {
-        showToast('채팅방 연결 실패: ' + e.message, 'error'); return;
+        // 채팅방 생성 or 가져오기
+        try {
+          chatId = await getOrCreateChat(myUid, otherUid, myProfile, otherProfile);
+        } catch (e) {
+          showToast('채팅방 연결 실패: ' + e.message, 'error'); return;
+        }
       }
 
       // chatId 설정 후 입력창에 이미 텍스트 있으면 버튼 활성화
@@ -130,8 +145,12 @@
             html += `<div class="chat-date-divider">${dateStr}</div>`;
             prevDate = dateStr;
           }
+          const senderName = isGroupChat && !isMe
+            ? `<div class="text-xs text-muted" style="margin:0 0 4px 6px">${escHtml(chatMemberInfo[m.uid]?.nickname || '익명')}</div>`
+            : '';
           html += `
             <div class="chat-bubble-wrap${isMe ? ' mine' : ''}">
+              ${senderName}
               <div class="chat-bubble">${escHtml(m.text)}</div>
               <div class="chat-time">${timeStr}</div>
             </div>`;
