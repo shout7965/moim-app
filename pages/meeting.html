@@ -365,9 +365,7 @@
         myMember = { ...(myMember || {}), ...data };
         renderMyStatus();
 
-        if (status === 'accepted' && meeting.status === 'pending') {
-          await updateMeeting(meetingId, { status: 'active' });
-        }
+        // 상태 전환은 activeAt 로직에서 처리
 
         const msg = status === 'accepted'
           ? (departure ? `'${departure.name}'에서 출발하는 것으로 수락했습니다!` : '약속을 수락했습니다!')
@@ -395,7 +393,18 @@
           (Number.isFinite(m.departureLat) && Number.isFinite(m.departureLng)) ||
           (Number.isFinite(m.lat) && Number.isFinite(m.lng))
         );
-        if (!allOriginSet) return;
+        if (!allOriginSet) {
+          // 출발지/현재위치가 없는 멤버가 있으면 scheduledAt 기준으로 fallback
+          if (meeting.scheduledAt) {
+            const at = meeting.scheduledAt.toDate ? meeting.scheduledAt.toDate() : new Date(meeting.scheduledAt);
+            const updates = { activeAt: at };
+            if (at <= new Date()) updates.status = 'active';
+            await updateMeeting(meetingId, updates);
+            meeting.activeAt = at;
+            updateTrackingBtn();
+          }
+          return;
+        }
 
         try {
           activeAtUpdating = true;
