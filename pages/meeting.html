@@ -393,18 +393,7 @@
           (Number.isFinite(m.departureLat) && Number.isFinite(m.departureLng)) ||
           (Number.isFinite(m.lat) && Number.isFinite(m.lng))
         );
-        if (!allOriginSet) {
-          // 출발지/현재위치가 없는 멤버가 있으면 scheduledAt 기준으로 fallback
-          if (meeting.scheduledAt) {
-            const at = meeting.scheduledAt.toDate ? meeting.scheduledAt.toDate() : new Date(meeting.scheduledAt);
-            const updates = { activeAt: at };
-            if (at <= new Date()) updates.status = 'active';
-            await updateMeeting(meetingId, updates);
-            meeting.activeAt = at;
-            updateTrackingBtn();
-          }
-          return;
-        }
+        if (!allOriginSet) return;
 
         try {
           activeAtUpdating = true;
@@ -419,8 +408,9 @@
           ));
           const maxEta = Math.max(...etas.filter(v => Number.isFinite(v)));
           if (!Number.isFinite(maxEta)) return;
-          const hours = Math.round(maxEta / 60);
-          const activeAt = new Date(Date.now() + hours * 60 * 60 * 1000);
+          const hours = Math.ceil(maxEta / 60);
+          const baseAt = meeting.scheduledAt?.toDate ? meeting.scheduledAt.toDate() : new Date(meeting.scheduledAt);
+          const activeAt = new Date(baseAt.getTime() - hours * 60 * 60 * 1000);
           const updates = { activeAt };
           if (activeAt <= new Date()) updates.status = 'active';
           await updateMeeting(meetingId, updates);
