@@ -783,7 +783,7 @@
 
         // 초대된 친구들 추가 + FCM 알림
         await Promise.all([...selectedFriends].map(async (uid) => {
-          const f = friends.find(fr => fr.uid === uid);
+          const f = allFriends.find(fr => fr.uid === uid);
           if (!f) return;
           await inviteMember(newMeetingId, uid, f.nickname, f.profileImg, {
             title,
@@ -791,19 +791,6 @@
             scheduledAt,
             place: { name: selectedPlace.name, address: selectedPlace.address },
           });
-          // FCM 알림 (fcmToken이 있을 때만)
-          if (f.fcmToken) {
-            await fetch(`${WORKER_URL}/api/notify`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                token: f.fcmToken,
-                title: '📅 약속 초대',
-                body:  `${myProfile.nickname}님이 "${title}" 약속에 초대했습니다`,
-                data:  { meetingId: newMeetingId, url: `/pages/meeting.html?id=${newMeetingId}` },
-              }),
-            }).catch(console.warn);
-          }
         }));
 
         showToast('약속이 만들어졌습니다!', 'success');
