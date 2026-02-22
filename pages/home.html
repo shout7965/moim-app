@@ -17,7 +17,9 @@
     </div>
 
     <div class="page-content" style="padding-top:8px">
-      <!-- 진행 중인 모임 배너 -->
+      <!-- 진행 중인 약속 -->
+      <div class="section-title">진행 중인 약속</div>
+      <div id="activeEmpty" class="text-sm text-muted" style="padding:8px 0">진행 중인 약속이 없습니다.</div>
       <div id="activeBanner" style="display:none;margin-bottom:12px"></div>
 
       <!-- 예정 약속 -->
@@ -34,9 +36,12 @@
         </div>
       </div>
 
-      <!-- 지난 약속 -->
-      <div class="section-title" style="margin-top:8px">지난 약속</div>
-      <div id="doneList">
+      <!-- 지난 약속 (접기/펼치기) -->
+      <div class="flex-between" style="margin-top:8px">
+        <div class="section-title">지난 약속</div>
+        <button class="btn btn-secondary btn-sm" id="toggleDoneBtn" type="button">열기</button>
+      </div>
+      <div id="doneList" class="hidden">
         <div class="text-sm text-muted" style="padding:8px 0">아직 완료된 약속이 없습니다.</div>
       </div>
     </div>
@@ -103,6 +108,15 @@
     const doneEl    = document.getElementById('doneList');
 
     const activeBannerEl = document.getElementById('activeBanner');
+    const activeEmptyEl  = document.getElementById('activeEmpty');
+    const toggleDoneBtn  = document.getElementById('toggleDoneBtn');
+
+    let doneExpanded = false;
+    toggleDoneBtn.addEventListener('click', () => {
+      doneExpanded = !doneExpanded;
+      doneEl.classList.toggle('hidden', !doneExpanded);
+      toggleDoneBtn.textContent = doneExpanded ? '닫기' : '열기';
+    });
 
     subscribeMyMeetings(myUid, (meetings) => {
       const active  = meetings.filter(m => m.status === 'active');
@@ -111,6 +125,7 @@
 
       // 진행 중인 모임 배너
       if (active.length) {
+        activeEmptyEl.style.display = 'none';
         activeBannerEl.style.display = '';
         activeBannerEl.innerHTML = active.map(m => `
           <div class="active-meeting-banner" data-id="${m.id}">
@@ -132,6 +147,7 @@
       } else {
         activeBannerEl.style.display = 'none';
         activeBannerEl.innerHTML = '';
+        activeEmptyEl.style.display = '';
       }
 
       if (!pending.length) {
