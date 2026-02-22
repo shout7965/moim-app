@@ -274,6 +274,15 @@
       return user;
     }
 
+    function setParticipantsText(row, text) {
+      const span = row.querySelector('span:last-child');
+      if (span) {
+        span.textContent = text;
+      } else {
+        row.textContent = `👥 ${text}`;
+      }
+    }
+
     function hydrateParticipants(container, meetings) {
       const rows = container.querySelectorAll('[data-participants]');
       const meetingMap = new Map(meetings.map(m => [m.id, m]));
@@ -285,7 +294,7 @@
           const snap = await getDocs(collection(db, 'meetings', meetingId, 'members'));
           const uids = snap.docs.map(d => d.id);
           if (!uids.length) {
-            row.querySelector('span:last-child').textContent = '참여자 없음';
+            setParticipantsText(row, '참여자 없음');
             return;
           }
           const namePromises = uids.slice(0, 3).map(async (uid) => {
@@ -296,11 +305,9 @@
           const names = (await Promise.all(namePromises)).filter(Boolean);
           const count = uids.length;
           const more = count > names.length ? ` 외 ${count - names.length}명` : '';
-          row.querySelector('span:last-child').textContent =
-            `참여자 ${count}명: ${names.join(', ')}${more}`;
+          setParticipantsText(row, `참여자 ${count}명: ${names.join(', ')}${more}`);
         } catch {
-          row.querySelector('span:last-child').textContent =
-            meeting?.hostId === myUid ? '참여자 정보 없음' : '참여자 정보 불러오기 실패';
+          setParticipantsText(row, meeting?.hostId === myUid ? '참여자 정보 없음' : '참여자 정보 불러오기 실패');
         }
       });
     }
