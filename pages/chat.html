@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>채팅 - 어디쯤왔어??</title>
+  <link rel="stylesheet" href="/style.css" />
+  <style>body { overflow: hidden; }</style>
+</head>
+<body>
+  <div class="chat-page">
+    <!-- 헤더 -->
+    <div class="chat-header">
+      <button class="btn-icon-round" id="backBtn">←</button>
+      <div class="avatar" id="otherAvatar">?</div>
+      <div class="chat-header-info">
+        <div class="chat-header-name" id="otherName">-</div>
+      </div>
+    </div>
+
+    <!-- 메시지 목록 -->
+    <div class="chat-messages" id="messageList">
+      <div class="text-sm text-muted" style="text-align:center;margin-top:40px">
+        대화를 시작해보세요
+      </div>
+    </div>
+
+    <!-- 입력창 -->
+    <div class="chat-input-bar">
+      <textarea class="chat-input" id="msgInput" placeholder="메시지 입력..." rows="1"></textarea>
+      <button class="chat-send-btn" id="sendBtn" disabled>↑</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireAuth, showToast, getParam } from '/main.js';
+    import { getUser, getOrCreateChat, sendMessage, subscribeMessages } from '/js/db.js';
+
+    const otherUid = getParam('uid');
+    if (!otherUid) { location.href = '/pages/friends.html'; }
+
+    let myUid, myProfile, chatId;
+
+    try {
+      const s = await requireAuth();
+      myUid = s.user.uid; myProfile = s.profile;
+    } catch { location.href = '/index.html'; }
+
+    // 상대방 정보
+    const otherProfile = await getUser(otherUid);
+    if (!otherProfile) {
+      showToast('사용자를 찾을 수 없습니다', 'error');
+      location.href = '/pages/friends.html';
+    }
+
+    // 헤더 렌더링
+    document.getElementById('otherName').textContent = otherProfile.nickname;
+    const av = document.getElementById('otherAvatar');
+    if (otherProfile.profileImg) av.innerHTML = `<img src="${otherProfile.profileImg}">`;
+    else av.textContent = otherProfile.nickname?.[0] || '?';
+
+    document.getElementById('backBtn').addEventListener('click', () => history.back());
+
+    // 채팅방 생성 or 가져오기
+    chatId = await getOrCreateChat(myUid, otherUid, myProfile, otherProfile);
+
+    // 메시지 구독
+    const msgList = document.getElementById('messageList');
+    let prevDate = '';
+    let isFirst = true;
+
+    subscribeMessages(chatId, (messages) => {
+      if (!messages.length) return;
+      prevDate = '';
+      msgList.innerHTML = messages.map(m => {
+        const isMe = m.uid === myUid;
+        const d    = m.createdAt?.toDate ? m.createdAt.toDate() : new Date();
+        const dateStr = `${d.getMonth()+1}월 ${d.getDate()}일`;
+        const timeStr = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+        let html = '';
+        if (dateStr !== prevDate) {
+          html += `<div class="chat-date-divider">${dateStr}</div>`;
+          prevDate = dateStr;
+        }
+        html += `
+          <div class="chat-bubble-wrap${isMe ? ' mine' : ''}">
+            <div class="chat-bubble">${escHtml(m.text)}</div>
+            <div class="chat-time">${timeStr}</div>
+          </div>`;
+        return html;
+      }).join('');
+
+      // 처음 로드 시 맨 아래로 스크롤
+      if (isFirst) {
+        msgList.scrollTop = msgList.scrollHeight;
+        isFirst = false;
+      } else {
+        // 새 메시지 수신 시 아래쪽에 있으면 자동 스크롤
+        const threshold = 120;
+        const distFromBottom = msgList.scrollHeight - msgList.scrollTop - msgList.clientHeight;
+        if (distFromBottom < threshold) {
+          msgList.scrollTop = msgList.scrollHeight;
+        }
+      }
+    });
+
+    // 전송
+    const input  = document.getElementById('msgInput');
+    const sendBtn = document.getElementById('sendBtn');
+
+    input.addEventListener('input', () => {
+      sendBtn.disabled = !input.value.trim();
+      // 자동 높이 조절
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        doSend();
+      }
+    });
+
+    sendBtn.addEventListener('click', doSend);
+
+    async function doSend() {
+      const text = input.value.trim();
+      if (!text) return;
+      sendBtn.disabled = true;
+      input.value = '';
+      input.style.height = 'auto';
+      try {
+        await sendMessage(chatId, myUid, text);
+        msgList.scrollTop = msgList.scrollHeight;
+      } catch (e) {
+        showToast('전송 실패: ' + e.message, 'error');
+      } finally {
+        sendBtn.disabled = !input.value.trim();
+      }
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+    }
+  </script>
+</body>
+</html>

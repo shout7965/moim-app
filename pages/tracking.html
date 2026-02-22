@@ -52,6 +52,7 @@
         <div class="status-dot dot-green dot-pulse"></div>
         <span class="text-xs text-green">실시간</span>
       </div>
+      <button class="btn-icon-round" id="privacyBtn" title="위치 공개/비공개">🔓</button>
       <button class="btn-icon-round" onclick="stopAndGoHome()" title="홈으로">🏠</button>
     </div>
   </div>
@@ -75,9 +76,9 @@
 
   <script type="module">
     import { requireAuth, showToast, getParam, formatDateTime } from '/main.js';
-    import { getMeeting, getMember, setMember, subscribeMembers, updateMeeting } from '/js/db.js';
+    import { getMeeting, getMember, setMember, subscribeMembers, updateMeeting, updateMemberLocation } from '/js/db.js';
     import { initMap, setMarker, addMemberMarker, centerMapAt, drawRoute, clearRoute } from '/js/kakaomap.js';
-    import { startLocationTracking, stopLocationTracking } from '/js/location.js';
+    import { startLocationTracking, stopLocationTracking, setLocationPrivate } from '/js/location.js';
     import { calcEta, etaLabel, etaClass } from '/js/eta.js';
     import { WORKER_URL } from '/js/firebase-config.js';
 
@@ -144,14 +145,16 @@
         let label, cls;
         if (m.status === 'arrived') {
           label = '도착!'; cls = 'eta-arrived';
+        } else if (m.locationPrivate && m.uid !== myUid) {
+          label = '비공개'; cls = 'eta-private';
         } else if (m.status === 'invited' || !m.lat) {
           label = '준비 중'; cls = 'eta-waiting';
         } else {
           label = etaLabel(m.eta); cls = etaClass(m.eta);
         }
 
-        // 지도 마커 업데이트 (위치가 있는 경우만)
-        if (m.lat && m.lng && m.status !== 'invited') {
+        // 지도 마커 업데이트 (위치가 있고 비공개가 아닌 경우만)
+        if (m.lat && m.lng && m.status !== 'invited' && (!m.locationPrivate || m.uid === myUid)) {
           if (!memberColorMap[m.uid]) {
             memberColorMap[m.uid] = COLORS[colorIndex++ % COLORS.length];
           }
@@ -190,11 +193,42 @@
     let latestMembers = []; // subscribeMembers 최신 상태 보관
     let allArrivedNotified = false; // 모두 도착 토스트 중복 방지
 
+    // 비공개 모드 초기화
+    let isPrivateMode = myMember?.locationPrivate || false;
+    setLocationPrivate(isPrivateMode);
+    const privacyBtn = document.getElementById('privacyBtn');
+    privacyBtn.textContent = isPrivateMode ? '🔒' : '🔓';
+
+    privacyBtn.addEventListener('click', async () => {
+      isPrivateMode = !isPrivateMode;
+      setLocationPrivate(isPrivateMode);
+      if (isPrivateMode) {
+        await setMember(meetingId, myUid, { lat: null, lng: null, eta: null, locationPrivate: true });
+        if (memberMarkers[myUid]) { memberMarkers[myUid].setMap(null); delete memberMarkers[myUid]; }
+        privacyBtn.textContent = '🔒';
+        showToast('위치가 비공개로 전환됐습니다', 'info');
+      } else {
+        await setMember(meetingId, myUid, { locationPrivate: false });
+        privacyBtn.textContent = '🔓';
+        showToast('위치가 공개로 전환됐습니다', 'info');
+      }
+    });
+
+    // 커스텀 출발지가 있고 아직 위치가 없으면 즉시 업로드
+    if (myMember?.departureLat && myMember?.departureLng && !myMember?.lat && !isPrivateMode) {
+      myLastLat = myMember.departureLat;
+      myLastLng = myMember.departureLng;
+      const initEta = destLat ? await calcEta(myMember.transport || 'walk', myMember.departureLat, myMember.departureLng, destLat, destLng).catch(() => null) : null;
+      await updateMemberLocation(meetingId, myUid, myMember.departureLat, myMember.departureLng, initEta).catch(console.warn);
+      if (!memberColorMap[myUid]) memberColorMap[myUid] = COLORS[0];
+      memberMarkers[myUid] = addMemberMarker(myMember.departureLat, myMember.departureLng, '나', memberColorMap[myUid]);
+    }
+
     // 전체 참여자 경로 표시
     async function refreshAllRoutes() {
       if (!routeVisible || !destLat || !destLng) return;
       clearRoute();
-      const toRoute = latestMembers.filter(m => m.lat && m.lng && m.status === 'accepted');
+      const toRoute = latestMembers.filter(m => m.lat && m.lng && m.status === 'accepted' && (!m.locationPrivate || m.uid === myUid));
       if (!toRoute.length) return;
       await Promise.all(toRoute.map(async (m) => {
         const t = m.transport || 'walk';

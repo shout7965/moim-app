@@ -59,6 +59,9 @@
       <button class="nav-item" onclick="location.href='/pages/create-meeting.html'">
         <span class="nav-icon">➕</span><span>약속</span>
       </button>
+      <button class="nav-item" onclick="location.href='/pages/chat-list.html'">
+        <span class="nav-icon">💬</span><span>채팅</span>
+      </button>
       <button class="nav-item active">
         <span class="nav-icon">👥</span><span>친구</span>
       </button>
@@ -162,6 +165,7 @@
             <div class="friend-name">${f.nickname}</div>
             <div class="friend-code">${f.inviteCode}</div>
           </div>
+          <button class="btn btn-secondary btn-sm" onclick="location.href='/pages/chat.html?uid=${f.uid}'">💬</button>
         </div>
       `).join('');
     }

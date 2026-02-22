@@ -65,10 +65,40 @@
       <div class="section-title">참여자</div>
       <div id="memberList"></div>
 
-      <!-- 호스트 전용: 약속 삭제 -->
-      <div id="hostActions" class="hidden" style="margin-top:8px">
+      <!-- 호스트 전용: 친구 초대 + 약속 삭제 -->
+      <div id="hostActions" class="hidden" style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
+        <button class="btn btn-secondary btn-block" id="inviteFriendBtn">👥 친구 초대</button>
         <button class="btn btn-danger btn-block" id="deleteMeetingBtn">약속 삭제</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 친구 초대 모달 -->
+  <div id="inviteModal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-title">친구 초대</div>
+      <div id="inviteFriendList" style="max-height:320px;overflow-y:auto"></div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-secondary btn-sm" style="flex:1" id="inviteCancelBtn">닫기</button>
+        <button class="btn btn-primary btn-sm" style="flex:1" id="inviteConfirmBtn">초대</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 출발위치 설정 모달 -->
+  <div id="departureModal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-title">출발 위치 설정</div>
+      <button class="btn btn-primary btn-block" id="departAutoBtn">
+        📍 현재 위치에서 출발
+      </button>
+      <div style="text-align:center;color:var(--text3);font-size:12px;margin:12px 0">또는 직접 지정</div>
+      <div class="input-row" style="margin-bottom:8px">
+        <input id="departSearchInput" class="input" placeholder="출발지 검색...">
+        <button class="btn btn-secondary btn-sm" id="departSearchBtn">검색</button>
+      </div>
+      <div id="departSearchResults"></div>
+      <button class="btn btn-secondary btn-sm btn-block" id="departCancelBtn" style="margin-top:10px">위치 없이 수락</button>
     </div>
   </div>
 
@@ -81,6 +111,9 @@
       <button class="nav-item" onclick="location.href='/pages/create-meeting.html'">
         <span class="nav-icon">➕</span><span>약속</span>
       </button>
+      <button class="nav-item" onclick="location.href='/pages/chat-list.html'">
+        <span class="nav-icon">💬</span><span>채팅</span>
+      </button>
       <button class="nav-item" onclick="location.href='/pages/friends.html'">
         <span class="nav-icon">👥</span><span>친구</span>
       </button>
@@ -89,11 +122,64 @@
 
   <script type="module">
     import { requireAuth, formatDateTime, showToast, getParam } from '/main.js';
-    import { getMeeting, getMember, setMember, subscribeMembers, updateMeeting } from '/js/db.js';
+    import { getMeeting, getMember, setMember, subscribeMembers, updateMeeting, getFriends, inviteMember } from '/js/db.js';
     import { shareMeetingLink } from '/js/invite.js';
     import { WORKER_URL } from '/js/firebase-config.js';
     import { doc, deleteDoc, collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
     import { db } from '/js/firebase-config.js';
+
+    // 출발위치 모달 초기화
+    function initDepartureModal() {
+      document.getElementById('departAutoBtn').addEventListener('click', async () => {
+        closeDepartureModal();
+        await changeStatus('accepted', null);
+      });
+      document.getElementById('departCancelBtn').addEventListener('click', async () => {
+        closeDepartureModal();
+        await changeStatus('accepted', null);
+      });
+      document.getElementById('departSearchBtn').addEventListener('click', () => {
+        const q = document.getElementById('departSearchInput').value.trim();
+        if (q) searchDeparture(q);
+      });
+      document.getElementById('departSearchInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const q = e.target.value.trim();
+          if (q) searchDeparture(q);
+        }
+      });
+    }
+
+    async function searchDeparture(q) {
+      const res  = await fetch(`${WORKER_URL}/api/search-places?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      const el   = document.getElementById('departSearchResults');
+      if (!data.results?.length) {
+        el.innerHTML = '<div class="text-sm text-muted" style="padding:8px 0">검색 결과가 없습니다.</div>';
+        return;
+      }
+      el.innerHTML = data.results.map((r, i) => `
+        <div class="friend-item" style="cursor:pointer;padding:10px 0" data-idx="${i}">
+          <div style="flex:1;min-width:0">
+            <div class="text-sm font-bold">${r.name}</div>
+            <div class="text-xs text-muted">${r.address}</div>
+          </div>
+        </div>`).join('');
+      data.results.forEach((r, i) => {
+        el.querySelector(`[data-idx="${i}"]`).addEventListener('click', async () => {
+          closeDepartureModal();
+          await changeStatus('accepted', { lat: r.lat, lng: r.lng, name: r.name });
+        });
+      });
+    }
+
+    function closeDepartureModal() {
+      document.getElementById('departureModal').classList.add('hidden');
+      document.getElementById('departSearchResults').innerHTML = '';
+      document.getElementById('departSearchInput').value = '';
+    }
+
+    initDepartureModal();
 
     let myUid, myProfile, meeting, myMember;
     const meetingId = getParam('id');
@@ -154,7 +240,8 @@
         btns.innerHTML = `
           <button class="btn btn-success btn-sm" id="acceptBtn">수락</button>
           <button class="btn btn-danger btn-sm" id="declineBtn">거절</button>`;
-        btns.querySelector('#acceptBtn').addEventListener('click', () => changeStatus('accepted'));
+        btns.querySelector('#acceptBtn').addEventListener('click', () =>
+          document.getElementById('departureModal').classList.remove('hidden'));
         btns.querySelector('#declineBtn').addEventListener('click', () => changeStatus('declined'));
       }
 
@@ -172,17 +259,25 @@
       }
     }
 
-    async function changeStatus(status) {
-      await setMember(meetingId, myUid, { status });
-      myMember.status = status;
+    async function changeStatus(status, departure = null) {
+      const data = { status };
+      if (status === 'accepted' && departure) {
+        data.departureLat  = departure.lat;
+        data.departureLng  = departure.lng;
+        data.departureName = departure.name;
+      }
+      await setMember(meetingId, myUid, data);
+      myMember = { ...myMember, ...data };
       renderMyStatus();
 
-      // 약속이 active 상태가 아니면 active로 변경
       if (status === 'accepted' && meeting.status === 'pending') {
         await updateMeeting(meetingId, { status: 'active' });
       }
 
-      showToast(status === 'accepted' ? '약속을 수락했습니다!' : '약속을 거절했습니다.', 'info');
+      const msg = status === 'accepted'
+        ? (departure ? `'${departure.name}'에서 출발하는 것으로 수락했습니다!` : '약속을 수락했습니다!')
+        : '약속을 거절했습니다.';
+      showToast(msg, 'info');
     }
 
     // 이동수단 선택
@@ -235,6 +330,60 @@
     // 호스트 전용 기능
     if (meeting.hostId === myUid) {
       document.getElementById('hostActions').classList.remove('hidden');
+
+      // 친구 초대 모달
+      let currentMemberUids = [];
+      subscribeMembers(meetingId, (members) => {
+        currentMemberUids = members.map(m => m.uid);
+      });
+
+      document.getElementById('inviteFriendBtn').addEventListener('click', async () => {
+        const friends = await getFriends(myProfile.friends || []);
+        const invitable = friends.filter(f => !currentMemberUids.includes(f.uid));
+        const listEl = document.getElementById('inviteFriendList');
+        if (!invitable.length) {
+          listEl.innerHTML = '<div class="text-sm text-muted" style="padding:12px 0;text-align:center">초대할 수 있는 친구가 없습니다</div>';
+        } else {
+          listEl.innerHTML = invitable.map(f => `
+            <div class="friend-check-item" data-uid="${f.uid}" data-nickname="${f.nickname}" data-img="${f.profileImg||''}">
+              <div class="avatar">
+                ${f.profileImg ? `<img src="${f.profileImg}">` : (f.nickname?.[0]||'?')}
+              </div>
+              <div class="friend-info">
+                <div class="friend-name">${f.nickname}</div>
+              </div>
+              <div class="check-icon" style="margin-left:auto;font-size:18px;color:var(--text3)">○</div>
+            </div>`).join('');
+          listEl.querySelectorAll('.friend-check-item').forEach(item => {
+            item.addEventListener('click', () => {
+              item.classList.toggle('selected');
+              item.querySelector('.check-icon').textContent = item.classList.contains('selected') ? '✅' : '○';
+            });
+          });
+        }
+        document.getElementById('inviteModal').classList.remove('hidden');
+      });
+
+      document.getElementById('inviteCancelBtn').addEventListener('click', () =>
+        document.getElementById('inviteModal').classList.add('hidden'));
+
+      document.getElementById('inviteConfirmBtn').addEventListener('click', async () => {
+        const selected = [...document.querySelectorAll('.friend-check-item.selected')];
+        if (!selected.length) { showToast('초대할 친구를 선택하세요', 'info'); return; }
+        document.getElementById('inviteConfirmBtn').disabled = true;
+        try {
+          await Promise.all(selected.map(el =>
+            inviteMember(meetingId, el.dataset.uid, el.dataset.nickname, el.dataset.img || null, meeting)
+          ));
+          document.getElementById('inviteModal').classList.add('hidden');
+          showToast(`${selected.length}명을 초대했습니다!`, 'success');
+        } catch (e) {
+          showToast('초대 실패: ' + e.message, 'error');
+        } finally {
+          document.getElementById('inviteConfirmBtn').disabled = false;
+        }
+      });
+
       document.getElementById('deleteMeetingBtn').addEventListener('click', async () => {
         if (!confirm('약속을 삭제하시겠습니까?')) return;
         try {

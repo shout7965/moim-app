@@ -182,6 +182,53 @@ export const syncUserMeetings = async (uid) => {
   // collectionGroup 방식은 Firebase v10 모듈형 SDK에서 동작 안 함 → no-op
 };
 
+// ===== Chats (1:1) =====
+
+// chatId: 두 uid를 정렬해 '_'로 합침 → 항상 동일
+export const makeChatId = (uid1, uid2) => [uid1, uid2].sort().join('_');
+
+export const getOrCreateChat = async (myUid, otherUid, myInfo, otherInfo) => {
+  const chatId  = makeChatId(myUid, otherUid);
+  const chatRef = doc(db, 'chats', chatId);
+  const snap    = await getDoc(chatRef);
+  if (!snap.exists()) {
+    await setDoc(chatRef, {
+      members: [myUid, otherUid],
+      memberInfo: {
+        [myUid]:   { nickname: myInfo.nickname,   profileImg: myInfo.profileImg   || null },
+        [otherUid]:{ nickname: otherInfo.nickname, profileImg: otherInfo.profileImg || null },
+      },
+      lastMessage: null,
+      lastAt:      null,
+      createdAt:   serverTimestamp(),
+    });
+  }
+  return chatId;
+};
+
+export const sendMessage = async (chatId, uid, text) => {
+  await addDoc(collection(db, 'chats', chatId, 'messages'), {
+    uid, text,
+    createdAt: serverTimestamp(),
+  });
+  await updateDoc(doc(db, 'chats', chatId), {
+    lastMessage: text,
+    lastAt:      serverTimestamp(),
+  });
+};
+
+export const subscribeMessages = (chatId, callback) =>
+  onSnapshot(
+    query(collection(db, 'chats', chatId, 'messages'), orderBy('createdAt', 'asc'), limit(200)),
+    (snap) => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+  );
+
+export const subscribeChats = (uid, callback) =>
+  onSnapshot(
+    query(collection(db, 'chats'), where('members', 'array-contains', uid), orderBy('lastAt', 'desc')),
+    (snap) => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+  );
+
 // 호스트가 만든 약속의 userMeetings 인덱스를 전체 멤버 기준으로 복구
 export const repairHostUserMeetings = async (uid) => {
   const hostSnap = await getDocs(query(collection(db, 'meetings'), where('hostId', '==', uid)));

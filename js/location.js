@@ -6,6 +6,12 @@ const MIN_DISTANCE_METERS = 50; // 50m 이상 이동 시에만 업로드
 let watchId = null;
 let lastLat = null;
 let lastLng = null;
+let _isPrivate = false;
+
+// 위치 비공개 여부 설정 (true: Firestore 업로드 건너뜀)
+export function setLocationPrivate(val) {
+  _isPrivate = val;
+}
 
 // Haversine 거리 계산 (미터)
 function haversineMeters(lat1, lng1, lat2, lng2) {
@@ -50,10 +56,12 @@ export function startLocationTracking(meetingId, uid, onUpdate, onEtaUpdate) {
       // ETA는 별도 계산 후 함께 업로드
       const eta = onEtaUpdate ? await onEtaUpdate(lat, lng) : null;
 
-      try {
-        await updateMemberLocation(meetingId, uid, lat, lng, eta);
-      } catch (e) {
-        console.warn('Location upload error:', e);
+      if (!_isPrivate) {
+        try {
+          await updateMemberLocation(meetingId, uid, lat, lng, eta);
+        } catch (e) {
+          console.warn('Location upload error:', e);
+        }
       }
     },
     (err) => console.warn('Geolocation error:', err),

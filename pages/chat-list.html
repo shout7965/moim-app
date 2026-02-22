@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>채팅 - 어디쯤왔어??</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="page page-with-nav">
+    <div class="page-header">
+      <h1>채팅</h1>
+    </div>
+
+    <div class="page-content">
+      <div id="chatList">
+        <div class="empty-state">
+          <div class="empty-state-icon">💬</div>
+          <div class="empty-state-title">아직 대화가 없어요</div>
+          <div class="empty-state-sub">친구 목록에서 채팅을 시작해보세요</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="bottom-nav">
+    <div class="nav-items">
+      <button class="nav-item" onclick="location.href='/pages/home.html'">
+        <span class="nav-icon">🏠</span><span>홈</span>
+      </button>
+      <button class="nav-item" onclick="location.href='/pages/create-meeting.html'">
+        <span class="nav-icon">➕</span><span>약속</span>
+      </button>
+      <button class="nav-item active">
+        <span class="nav-icon">💬</span><span>채팅</span>
+      </button>
+      <button class="nav-item" onclick="location.href='/pages/friends.html'">
+        <span class="nav-icon">👥</span><span>친구</span>
+      </button>
+    </div>
+  </nav>
+
+  <script type="module">
+    import { requireAuth, showToast } from '/main.js';
+    import { subscribeChats } from '/js/db.js';
+
+    let myUid;
+    try {
+      const s = await requireAuth();
+      myUid = s.user.uid;
+    } catch { location.href = '/index.html'; }
+
+    subscribeChats(myUid, (chats) => {
+      const el = document.getElementById('chatList');
+      if (!chats.length) {
+        el.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">💬</div>
+            <div class="empty-state-title">아직 대화가 없어요</div>
+            <div class="empty-state-sub">친구 목록에서 채팅을 시작해보세요</div>
+          </div>`;
+        return;
+      }
+      el.innerHTML = chats.map(c => {
+        const otherUid = c.members.find(u => u !== myUid);
+        const other    = c.memberInfo?.[otherUid] || {};
+        const avatarHtml = other.profileImg
+          ? `<img src="${other.profileImg}">`
+          : (other.nickname?.[0] || '?');
+        const lastMsg  = c.lastMessage || '대화를 시작해보세요';
+        const lastTime = c.lastAt?.toDate
+          ? (() => {
+              const d = c.lastAt.toDate();
+              const now = new Date();
+              if (d.toDateString() === now.toDateString()) {
+                return d.toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit', hour12:true });
+              }
+              return `${d.getMonth()+1}/${d.getDate()}`;
+            })()
+          : '';
+        return `
+          <div class="chat-list-item" onclick="location.href='/pages/chat.html?uid=${otherUid}'">
+            <div class="avatar">${avatarHtml}</div>
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span class="font-bold text-sm">${other.nickname || '-'}</span>
+                <span style="font-size:11px;color:var(--text3)">${lastTime}</span>
+              </div>
+              <div class="chat-last-msg">${escHtml(lastMsg)}</div>
+            </div>
+          </div>`;
+      }).join('');
+    });
+
+    function escHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+  </script>
+</body>
+</html>
