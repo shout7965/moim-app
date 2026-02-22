@@ -1,5 +1,5 @@
 // ===== Firestore CRUD 헬퍼 =====
-import { db } from './firebase-config.js';
+import { db, WORKER_URL } from './firebase-config.js';
 import {
   doc, collection, getDoc, setDoc, updateDoc, deleteDoc,
   addDoc, query, where, orderBy, limit,
@@ -181,6 +181,16 @@ export const inviteMember = async (meetingId, uid, nickname, profileImg, meeting
   });
 
   await batch.commit();
+
+  // 푸시 알림 (수신자 fcmToken이 있을 때만)
+  try {
+    await notifyUser(uid, '약속 초대', `${meeting.title || '약속'}에 초대되었습니다`, {
+      url: `/pages/meeting.html?id=${meetingId}`,
+      meetingId,
+    });
+  } catch (e) {
+    console.warn('invite notify error:', e);
+  }
 };
 
 // 딥링크 참여: 멤버 추가 + userMeetings 기록 (본인 기준)
@@ -281,6 +291,45 @@ export const sendMessage = async (chatId, uid, text) => {
     lastMessage: text,
     lastAt:      serverTimestamp(),
   });
+};
+
+// ===== Push Notifications =====
+async function notifyToken(token, title, body, data = {}) {
+  if (!token) return;
+  await fetch(`${WORKER_URL}/api/notify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, title, body, data }),
+  });
+}
+
+export const notifyUser = async (uid, title, body, data = {}) => {
+  const snap = await getDoc(doc(db, 'users', uid));
+  if (!snap.exists()) return;
+  const user = snap.data() || {};
+  if (!user.fcmToken) return;
+  await notifyToken(user.fcmToken, title, body, data);
+};
+
+export const notifyChatMembers = async (chatId, senderUid, senderName, text) => {
+  const chatSnap = await getDoc(doc(db, 'chats', chatId));
+  if (!chatSnap.exists()) return;
+  const chat = chatSnap.data() || {};
+  const members = (chat.members || []).filter(u => u !== senderUid);
+  if (!members.length) return;
+
+  const title = chat.type === 'group' || chat.name ? (chat.name || '단체 대화') : (senderName || '새 메시지');
+  const url = chat.type === 'group' || chat.name
+    ? `/pages/chat.html?chatId=${chatId}`
+    : `/pages/chat.html?uid=${senderUid}`;
+
+  await Promise.all(members.map(async (uid) => {
+    try {
+      await notifyUser(uid, title, text, { url, chatId });
+    } catch (e) {
+      console.warn('chat notify error:', e);
+    }
+  }));
 };
 
 export const subscribeMessages = (chatId, callback) =>

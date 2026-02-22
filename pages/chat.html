@@ -34,7 +34,7 @@
 
   <script type="module">
     import { requireAuth, showToast, getParam } from '/main.js';
-    import { getUser, getOrCreateChat, getChat, sendMessage, subscribeMessages } from '/js/db.js';
+    import { getUser, getOrCreateChat, getChat, sendMessage, subscribeMessages, notifyChatMembers } from '/js/db.js';
 
     // ── DOM refs ──
     const input   = document.getElementById('msgInput');
@@ -64,6 +64,7 @@
       input.style.height = 'auto';
       try {
         await sendMessage(chatId, myUid, text);
+        await notifyChatMembers(chatId, myUid, myProfile?.nickname || '새 메시지', text);
         msgList.scrollTop = msgList.scrollHeight;
       } catch (e) {
         showToast('전송 실패: ' + e.message, 'error');
