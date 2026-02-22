@@ -136,7 +136,7 @@
   <script type="module">
     import { requireAuth, getParam }    from '/main.js';
     import { showToast }      from '/main.js';
-    import { initMap, setMarker, closeInfoWindow } from '/js/kakaomap.js';
+    import { initMap, setMarker, closeInfoWindow, centerOnMyLocation } from '/js/kakaomap.js';
     import { createMeeting, inviteMember, getFriends, getMeeting, updateMeeting } from '/js/db.js';
     import { WORKER_URL }     from '/js/firebase-config.js';
     import { db } from '/js/firebase-config.js';
@@ -151,6 +151,16 @@
     let mapInstance = null;
     let mapClickBound = false;
     let searchBtnBusy = false;
+    const parseKstDateTime = (v) => {
+      if (!v) return null;
+      const [d, t] = v.split('T');
+      if (!d || !t) return null;
+      const [y, m, day] = d.split('-').map(Number);
+      const [hh, mm] = t.split(':').map(Number);
+      if (![y, m, day, hh, mm].every(Number.isFinite)) return null;
+      // 입력값을 KST로 해석
+      return new Date(Date.UTC(y, m - 1, day, hh - 9, mm));
+    };
 
     try {
       const s = await requireAuth();
@@ -239,8 +249,15 @@
       document.getElementById('placeAddr').textContent = '지도를 눌러 위치를 선택하세요';
       document.getElementById('selectedPlace').classList.remove('hidden');
       await new Promise(requestAnimationFrame);
-      const baseLat = selectedPlace?.lat || 37.5665;
-      const baseLng = selectedPlace?.lng || 126.978;
+      let baseLat = selectedPlace?.lat || 37.5665;
+      let baseLng = selectedPlace?.lng || 126.978;
+      try {
+        const pos = await centerOnMyLocation();
+        baseLat = pos.lat;
+        baseLng = pos.lng;
+      } catch {
+        // 위치 권한 거부 시 기본 좌표 유지
+      }
       await ensureMap(baseLat, baseLng, 4);
       document.getElementById('placeResults').classList.add('hidden');
       showToast('지도에서 위치를 탭해 핀을 설정하세요', 'info');
@@ -709,13 +726,19 @@
       if (!title)       { showToast('약속 이름을 입력하세요', 'error'); return; }
       if (!selectedPlace) { showToast('장소를 선택하세요', 'error'); return; }
       if (!dateStr)     { showToast('날짜와 시간을 선택하세요', 'error'); return; }
+      const selectedAt = parseKstDateTime(dateStr);
+      if (!selectedAt)  { showToast('날짜와 시간을 다시 선택하세요', 'error'); return; }
+      if (selectedAt.getTime() <= Date.now()) {
+        showToast('지난 시간으로는 약속을 만들 수 없습니다 (KST 기준)', 'error');
+        return;
+      }
 
       const createBtn = document.getElementById('createBtn');
       createBtn.disabled = true;
       createBtn.textContent = isEdit ? '수정 중...' : '만드는 중...';
 
       try {
-        const scheduledAt = Timestamp.fromDate(new Date(dateStr));
+        const scheduledAt = Timestamp.fromDate(selectedAt);
 
         if (isEdit) {
           await updateMeeting(meetingId, {

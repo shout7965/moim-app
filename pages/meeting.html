@@ -125,6 +125,7 @@
   <script type="module">
     import { requireAuth, formatDateTime, showToast, getParam } from '/main.js';
     import { getMeeting, getMember, setMember, subscribeMembers, updateMeeting, getFriends, inviteMember, joinMeetingByLink } from '/js/db.js';
+    import { calcEta } from '/js/eta.js';
     import { initMap, setMarker, closeInfoWindow, centerOnMyLocation } from '/js/kakaomap.js';
     import { shareMeetingLink } from '/js/invite.js';
     import { WORKER_URL } from '/js/firebase-config.js';
@@ -209,8 +210,20 @@
 
     function initDepartureModal() {
       document.getElementById('departAutoBtn').addEventListener('click', async () => {
-        closeDepartureModal();
-        await changeStatus('accepted', null);
+        try {
+          if (!navigator.geolocation) throw new Error('위치 권한이 필요합니다');
+          navigator.geolocation.getCurrentPosition(async (pos) => {
+            const { latitude: lat, longitude: lng } = pos.coords;
+            closeDepartureModal();
+            await changeStatus('accepted', { lat, lng, name: '현재 위치' });
+          }, async () => {
+            closeDepartureModal();
+            await changeStatus('accepted', null);
+          }, { enableHighAccuracy: true, timeout: 8000 });
+        } catch {
+          closeDepartureModal();
+          await changeStatus('accepted', null);
+        }
       });
       document.getElementById('departCancelBtn').addEventListener('click', async () => {
         closeDepartureModal();
@@ -288,9 +301,17 @@
         myMember = null;
       }
 
+      const isActiveNow = () => {
+        if (meeting.status === 'active') return true;
+        if (meeting.status !== 'pending') return false;
+        if (!meeting.activeAt) return false;
+        const at = meeting.activeAt.toDate ? meeting.activeAt.toDate() : new Date(meeting.activeAt);
+        return at <= new Date();
+      };
+
       // active 약속 + 수락한 멤버 → 바로 추적 페이지로 (noredirect=1이면 유지)
       if (
-        meeting.status === 'active' &&
+        isActiveNow() &&
         myMember && (myMember.status === 'accepted' || myMember.status === 'arrived') &&
         getParam('noredirect') !== '1'
       ) {
@@ -346,6 +367,42 @@
 
       // 참여자 목록 구독 (멤버/호스트만)
       let membersSubscribed = false;
+      let activeAtUpdating = false;
+      async function maybeScheduleActiveAt(members) {
+        if (activeAtUpdating) return;
+        if (meeting.status !== 'pending') return;
+        if (meeting.activeAt) return;
+        if (!meeting.place?.lat || !meeting.place?.lng) return;
+
+        const allNonDeclined = members.filter(m => m.status !== 'declined');
+        if (!allNonDeclined.length) return;
+        const allAccepted = allNonDeclined.every(m => m.status === 'accepted' || m.status === 'arrived');
+        if (!allAccepted) return;
+        const allTransportSet = allNonDeclined.every(m => !!m.transport);
+        if (!allTransportSet) return;
+        const allDepartureSet = allNonDeclined.every(m =>
+          Number.isFinite(m.departureLat) && Number.isFinite(m.departureLng)
+        );
+        if (!allDepartureSet) return;
+
+        try {
+          activeAtUpdating = true;
+          const etas = await Promise.all(allNonDeclined.map(m =>
+            calcEta(m.transport, m.departureLat, m.departureLng, meeting.place.lat, meeting.place.lng)
+          ));
+          const maxEta = Math.max(...etas.filter(v => Number.isFinite(v)));
+          if (!Number.isFinite(maxEta)) return;
+          const hours = Math.round(maxEta / 60);
+          const activeAt = new Date(Date.now() + hours * 60 * 60 * 1000);
+          await updateMeeting(meetingId, { activeAt });
+          meeting.activeAt = activeAt;
+        } catch (e) {
+          console.warn('activeAt schedule error:', e);
+        } finally {
+          activeAtUpdating = false;
+        }
+      }
+
       function ensureMemberSubscription() {
         if (membersSubscribed) return;
         membersSubscribed = true;
@@ -376,6 +433,9 @@
                 <div class="status-dot ${statusDotMap[m.status] || 'dot-gray'}"></div>
               </div>`;
           }).join('');
+
+          // 모두 수락 + 이동수단/출발지 설정 완료 시 activeAt 스케줄
+          maybeScheduleActiveAt(members);
         });
       }
 
@@ -442,7 +502,7 @@
               b.classList.toggle('selected', b.dataset.transport === myMember.transport);
             });
           }
-          if (meeting.status !== 'done') {
+          if (meeting.status !== 'done' && isActiveNow()) {
             trackingArea.classList.remove('hidden');
           }
         }

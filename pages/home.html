@@ -119,8 +119,15 @@
     });
 
     subscribeMyMeetings(myUid, (meetings) => {
-      const active  = meetings.filter(m => m.status === 'active');
-      const pending = meetings.filter(m => m.status === 'pending');
+      const isActiveNow = (m) => {
+        if (m.status === 'active') return true;
+        if (m.status !== 'pending' || !m.activeAt) return false;
+        const at = m.activeAt.toDate ? m.activeAt.toDate() : new Date(m.activeAt);
+        return at <= new Date();
+      };
+
+      const active  = meetings.filter(m => isActiveNow(m));
+      const pending = meetings.filter(m => m.status === 'pending' && !isActiveNow(m));
       const done    = meetings.filter(m => m.status === 'done');
 
       // 진행 중인 모임 배너

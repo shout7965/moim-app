@@ -107,10 +107,22 @@
 
     meeting = await getMeeting(meetingId);
     if (!meeting) { location.href = '/pages/home.html'; return; }
+    const isActiveNow = () => {
+      if (meeting.status === 'active') return true;
+      if (meeting.status !== 'pending') return false;
+      if (!meeting.activeAt) return false;
+      const at = meeting.activeAt.toDate ? meeting.activeAt.toDate() : new Date(meeting.activeAt);
+      return at <= new Date();
+    };
 
     const myMember = await getMember(meetingId, myUid);
     if (!myMember || myMember.status === 'declined') {
       showToast('참여 확정된 멤버만 추적 화면을 사용할 수 있습니다', 'error');
+      location.href = `/pages/meeting.html?id=${meetingId}&noredirect=1`;
+      return;
+    }
+    if (!isActiveNow()) {
+      showToast('아직 진행 중이 아닙니다', 'info');
       location.href = `/pages/meeting.html?id=${meetingId}&noredirect=1`;
       return;
     }
