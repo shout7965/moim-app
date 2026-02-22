@@ -162,29 +162,29 @@
       return new Date(Date.UTC(y, m - 1, day, hh - 9, mm));
     };
 
-    function toInputKstValue(d) {
+    function toInputLocalValue(d) {
       const pad = (n) => String(n).padStart(2, '0');
-      const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
-      return `${kst.getUTCFullYear()}-${pad(kst.getUTCMonth() + 1)}-${pad(kst.getUTCDate())}T${pad(kst.getUTCHours())}:${pad(kst.getUTCMinutes())}`;
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     }
 
     function setDefaultDateTime(force = false) {
       const input = document.getElementById('dateTimeInput');
       if (!input) return;
       const now = new Date();
-      const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+      const deltaMin = 540 + now.getTimezoneOffset(); // KST(540) - local offset
+      const kstNow = new Date(now.getTime() + deltaMin * 60000);
       const rounded = new Date(kstNow);
       const m = rounded.getMinutes();
       const add = (10 - (m % 10)) % 10;
       rounded.setMinutes(m + add, 0, 0);
       if (rounded.getTime() < kstNow.getTime()) rounded.setMinutes(rounded.getMinutes() + 10, 0, 0);
       if (force || !input.value) {
-        input.value = toInputKstValue(rounded);
+        input.value = toInputLocalValue(rounded);
         return;
       }
       const existing = new Date(input.value);
       if (isNaN(existing.getTime()) || existing.getTime() < kstNow.getTime()) {
-        input.value = toInputKstValue(rounded);
+        input.value = toInputLocalValue(rounded);
       }
     }
 
