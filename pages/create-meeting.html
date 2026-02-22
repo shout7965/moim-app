@@ -539,12 +539,21 @@
         scored.sort((a,b)=>a.score-b.score);
 
         const defaultCount = 3;
+        const themeLabel = {
+          meal: '식사',
+          drink: '술',
+          cafe: '카페',
+          etc: '모임',
+        }[theme] || '모임';
+        const descLine = keywords ? `${themeLabel} · ${keywords}` : themeLabel;
+
         const renderItems = (list) => list.map(s => `
           <div class="place-result-item" data-lat="${s.c.lat}" data-lng="${s.c.lng}" data-name="${s.c.name}" data-addr="${s.c.address}">
             <div class="place-result-info">
               <div class="place-result-name">${s.c.name}</div>
               <div class="place-result-addr">${s.c.address}</div>
-              <div class="text-xs text-muted">평균 ${Math.round(s.avg)}분 · 편차 ${Math.round(s.std)}분 · 범위 ${s.min}-${s.max}분</div>
+              <div class="text-xs text-muted">이동시간 범위 ${s.min}-${s.max}분</div>
+              <div class="text-xs text-muted">${descLine}</div>
             </div>
           </div>`).join('');
         const top = scored.slice(0, defaultCount);
