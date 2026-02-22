@@ -197,10 +197,23 @@
       } catch { location.href = '/index.html'; return; }
 
       // 약속 정보 로드
-      meeting = await getMeeting(meetingId);
+      try {
+        meeting = await getMeeting(meetingId);
+      } catch (e) {
+        showToast('약속 정보를 불러오지 못했습니다', 'error');
+        document.getElementById('myStatusArea').innerHTML = `
+          <div class="card-sm" style="text-align:center">
+            <div class="text-sm text-muted">약속 정보를 불러오지 못했습니다.</div>
+            <div class="text-xs text-muted" style="margin-top:6px">잠시 후 다시 시도해주세요.</div>
+          </div>`;
+        return;
+      }
       if (!meeting) {
         showToast('약속을 찾을 수 없거나 삭제되었습니다', 'error');
-        location.href = '/pages/home.html';
+        document.getElementById('myStatusArea').innerHTML = `
+          <div class="card-sm" style="text-align:center">
+            <div class="text-sm text-muted">약속이 없거나 삭제되었습니다.</div>
+          </div>`;
         return;
       }
 

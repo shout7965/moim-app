@@ -32,11 +32,12 @@ export async function shareMyCode(inviteCode) {
 // 약속 딥링크 공유
 export async function shareMeetingLink(meetingId, title) {
   const url  = `${location.origin}/pages/meeting.html?id=${meetingId}`;
-  const text = `[어디쯤왔어??] "${title}" 약속에 초대합니다!\n${url}`;
+  const text = `[어디쯤왔어??] "${title}" 약속에 초대합니다!`;
   if (navigator.share) {
+    // 일부 공유 앱(카카오톡 등)에서 text+url 중복 노출 방지
     await navigator.share({ title: `어디쯤왔어?? - ${title}`, text, url });
   } else {
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(`${text}\n${url}`);
     showToast('초대 링크가 복사되었습니다!', 'success');
   }
 }
