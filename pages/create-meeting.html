@@ -365,6 +365,7 @@
         try {
           const res = await fetch(`${WORKER_URL}/api/search-places?q=${encodeURIComponent(q)}`);
           const data = await res.json();
+          if (data.error) throw new Error(data.error);
           const results = data.results || [];
           if (!results.length) {
             resultsEl.innerHTML = '<div class="text-sm text-muted" style="padding:8px">결과가 없습니다.</div>';
@@ -454,6 +455,10 @@
         showToast(`${label} 2개 이상을 선택하세요`, 'error');
         return;
       }
+      if (aiPointsList.querySelectorAll('[data-pid]').length > points.length) {
+        showToast('입력한 장소를 검색해서 선택해주세요', 'error');
+        return;
+      }
       const centroid = points.reduce((acc, p) => ({ lat: acc.lat + p.lat, lng: acc.lng + p.lng }), { lat: 0, lng: 0 });
       centroid.lat /= points.length;
       centroid.lng /= points.length;
@@ -482,6 +487,10 @@
         for (const q of queries) {
           const res = await fetch(`${WORKER_URL}/api/search-places?q=${encodeURIComponent(q.q)}&lat=${centroid.lat}&lng=${centroid.lng}&radius=${q.radius}`);
           const data = await res.json();
+          if (data.error) {
+            aiResults.innerHTML = `<div class="text-sm text-muted">검색 실패: ${data.error}</div>`;
+            return;
+          }
           candidates = (data.results || []).slice(0, 8);
           if (candidates.length) { usedLabel = q.label; break; }
         }
