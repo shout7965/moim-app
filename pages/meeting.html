@@ -30,6 +30,7 @@
             <span id="scheduledAt" class="text-sm">-</span>
           </div>
         </div>
+        <div id="meetingPlaceMap" class="hidden" style="height:180px;border-radius:var(--radius);overflow:hidden;margin-top:10px"></div>
       </div>
 
       <!-- 내 상태 -->
@@ -302,6 +303,13 @@
       document.getElementById('placeName').textContent    = meeting.place?.name || '-';
       document.getElementById('placeAddr').textContent    = meeting.place?.address || '';
       document.getElementById('scheduledAt').textContent  = formatDateTime(meeting.scheduledAt);
+      if (meeting.place?.lat && meeting.place?.lng) {
+        const mapEl = document.getElementById('meetingPlaceMap');
+        mapEl.classList.remove('hidden');
+        await new Promise(requestAnimationFrame);
+        await initMap('meetingPlaceMap', { lat: meeting.place.lat, lng: meeting.place.lng, level: 4 });
+        setMarker(meeting.place.lat, meeting.place.lng, meeting.place?.name || '약속 장소');
+      }
 
       // 공유
       document.getElementById('shareBtn').addEventListener('click', () =>
