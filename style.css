@@ -228,6 +228,9 @@ input, textarea, select {
   cursor: pointer;
 }
 
+.meeting-card.pending { border-color: rgba(86, 165, 255, 0.45); }
+.meeting-card.done { border-color: rgba(155, 155, 155, 0.45); }
+
 .meeting-card:active { border-color: var(--accent); }
 
 .meeting-card-top {

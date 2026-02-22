@@ -234,7 +234,7 @@
       const canEdit = isHost && m.status !== 'done';
 
       return `
-        <div class="meeting-card" data-id="${m.id}">
+        <div class="meeting-card ${m.status}" data-id="${m.id}">
           <div class="meeting-card-top">
             <div class="meeting-title">${m.title}</div>
             <div class="meeting-top-right">
