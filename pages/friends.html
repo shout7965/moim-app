@@ -148,7 +148,7 @@
       showToast('초대코드가 복사되었습니다!', 'success');
     });
 
-    shareCodeBtn.addEventListener('click', () => shareMyCode(myProfile.inviteCode));
+    shareCodeBtn.addEventListener('click', () => shareMyCode(myProfile.inviteCode, myProfile.nickname || '친구'));
 
     // 코드 입력 자동 대문자
     codeInput.addEventListener('input', () => {
@@ -159,6 +159,11 @@
     const codeParam = new URLSearchParams(location.search).get('code');
     if (codeParam) {
       codeInput.value = codeParam.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const hint = document.createElement('div');
+      hint.className = 'text-xs text-muted';
+      hint.style.marginTop = '6px';
+      hint.textContent = '초대받은 코드로 친구를 추가합니다...';
+      codeInput.closest('.card-sm')?.appendChild(hint);
       setTimeout(() => addFriendBtn.click(), 300);
     }
 

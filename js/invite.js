@@ -20,9 +20,9 @@ export async function addFriendByCode(myUid, myProfile, code) {
 }
 
 // 내 초대코드 공유
-export async function shareMyCode(inviteCode) {
+export async function shareMyCode(inviteCode, nickname = '친구') {
   const url = `${location.origin}/pages/friends.html?code=${encodeURIComponent(inviteCode)}`;
-  const text = `어디쯤왔어?? 앱에서 나를 친구로 추가하려면 초대코드를 입력하세요: ${inviteCode}`;
+  const text = `어디쯤왔어??에서 ${nickname}님이 친구 추가를 요청했어요. 초대코드: ${inviteCode}`;
 
   await ensureKakaoSDK();
   if (window.Kakao?.Share?.sendDefault) {
@@ -31,7 +31,7 @@ export async function shareMyCode(inviteCode) {
         objectType: 'feed',
         content: {
           title: '어디쯤왔어?? 친구 추가',
-          description: '버튼을 눌러 바로 친구 추가 화면으로 이동하세요.',
+          description: `${nickname}님이 친구 추가를 요청했어요.`,
           imageUrl: `${location.origin}/icons/icon.svg`,
           link: { mobileWebUrl: url, webUrl: url },
         },
