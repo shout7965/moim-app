@@ -143,6 +143,7 @@
             </div>
             <div class="font-bold" style="margin-bottom:2px">${m.title}</div>
             <div class="text-xs text-muted">📍 ${m.place?.name || '-'}</div>
+            <div class="text-xs text-muted" data-participants="${m.id}">👥 참여자 불러오는 중...</div>
             <div style="margin-top:10px;text-align:right">
               <span class="text-xs text-accent">📡 실시간 추적 보기 →</span>
             </div>
@@ -152,6 +153,7 @@
             location.href = `/pages/tracking.html?id=${el.dataset.id}`;
           });
         });
+        hydrateParticipants(activeBannerEl, active);
       } else {
         activeBannerEl.style.display = 'none';
         activeBannerEl.innerHTML = '';
