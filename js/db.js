@@ -83,7 +83,10 @@ export const subscribeMyMeetings = (uid, callback) => {
         try {
           const m = await getMeeting(id);
           if (m) return m;
+          // m === null: 약속 문서가 삭제됨 → 목록에서 제외
+          return null;
         } catch (e) {
+          // 권한 오류 등 네트워크 문제 → 캐시 데이터로 임시 표시
           console.warn('getMeeting error:', e);
         }
         const data = docSnap.data() || {};
