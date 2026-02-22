@@ -36,29 +36,23 @@
     import { requireAuth, showToast, getParam } from '/main.js';
     import { getUser, getOrCreateChat, sendMessage, subscribeMessages } from '/js/db.js';
 
-    const otherUid = getParam('uid');
-    if (!otherUid) { location.href = '/pages/friends.html'; }
-
-    let myUid, myProfile, chatId;
-
-    // ── 이벤트 리스너는 비동기 초기화보다 먼저 등록 ──
+    // ── DOM refs ──
     const input   = document.getElementById('msgInput');
     const sendBtn = document.getElementById('sendBtn');
     const msgList = document.getElementById('messageList');
 
+    // 모듈 스코프 상태 (init 내부에서 설정)
+    let myUid, myProfile, chatId;
+
+    // ── 이벤트 리스너 (항상 먼저 등록) ──
     input.addEventListener('input', () => {
       sendBtn.disabled = !chatId || !input.value.trim();
       input.style.height = 'auto';
       input.style.height = Math.min(input.scrollHeight, 100) + 'px';
     });
-
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        doSend();
-      }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
     });
-
     sendBtn.addEventListener('click', doSend);
     document.getElementById('backBtn').addEventListener('click', () => history.back());
 
@@ -79,70 +73,80 @@
     }
 
     function escHtml(s) {
-      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
     }
 
-    // ── 비동기 초기화 ──
-    try {
-      const s = await requireAuth();
-      myUid = s.user.uid; myProfile = s.profile;
-    } catch { location.href = '/index.html'; }
+    // ── 비동기 초기화 (async IIFE) ──
+    (async () => {
+      const otherUid = getParam('uid');
+      if (!otherUid) { location.href = '/pages/friends.html'; return; }
 
-    const otherProfile = await getUser(otherUid);
-    if (!otherProfile) {
-      showToast('사용자를 찾을 수 없습니다', 'error');
-      location.href = '/pages/friends.html';
-    }
+      try {
+        const s = await requireAuth();
+        myUid = s.user.uid; myProfile = s.profile;
+      } catch { location.href = '/index.html'; return; }
 
-    // 헤더 렌더링
-    document.getElementById('otherName').textContent = otherProfile.nickname;
-    const av = document.getElementById('otherAvatar');
-    if (otherProfile.profileImg) av.innerHTML = `<img src="${otherProfile.profileImg}">`;
-    else av.textContent = otherProfile.nickname?.[0] || '?';
-
-    // 채팅방 생성 or 가져오기
-    try {
-      chatId = await getOrCreateChat(myUid, otherUid, myProfile, otherProfile);
-    } catch (e) {
-      showToast('채팅방 연결 실패: ' + e.message, 'error');
-    }
-
-    if (!chatId) return;
-
-    // 메시지 구독
-    let prevDate = '';
-    let isFirst = true;
-
-    subscribeMessages(chatId, (messages) => {
-      if (!messages.length) return;
-      prevDate = '';
-      msgList.innerHTML = messages.map(m => {
-        const isMe = m.uid === myUid;
-        const d    = m.createdAt?.toDate ? m.createdAt.toDate() : new Date();
-        const dateStr = `${d.getMonth()+1}월 ${d.getDate()}일`;
-        const timeStr = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-        let html = '';
-        if (dateStr !== prevDate) {
-          html += `<div class="chat-date-divider">${dateStr}</div>`;
-          prevDate = dateStr;
-        }
-        html += `
-          <div class="chat-bubble-wrap${isMe ? ' mine' : ''}">
-            <div class="chat-bubble">${escHtml(m.text)}</div>
-            <div class="chat-time">${timeStr}</div>
-          </div>`;
-        return html;
-      }).join('');
-
-      if (isFirst) {
-        msgList.scrollTop = msgList.scrollHeight;
-        isFirst = false;
-      } else {
-        const distFromBottom = msgList.scrollHeight - msgList.scrollTop - msgList.clientHeight;
-        if (distFromBottom < 120) msgList.scrollTop = msgList.scrollHeight;
+      let otherProfile;
+      try {
+        otherProfile = await getUser(otherUid);
+      } catch (e) {
+        showToast('사용자 정보를 불러올 수 없습니다', 'error'); return;
       }
-    });
+      if (!otherProfile) {
+        showToast('사용자를 찾을 수 없습니다', 'error');
+        location.href = '/pages/friends.html'; return;
+      }
+
+      // 헤더 렌더링
+      document.getElementById('otherName').textContent = otherProfile.nickname;
+      const av = document.getElementById('otherAvatar');
+      if (otherProfile.profileImg) av.innerHTML = `<img src="${otherProfile.profileImg}">`;
+      else av.textContent = otherProfile.nickname?.[0] || '?';
+
+      // 채팅방 생성 or 가져오기
+      try {
+        chatId = await getOrCreateChat(myUid, otherUid, myProfile, otherProfile);
+      } catch (e) {
+        showToast('채팅방 연결 실패: ' + e.message, 'error'); return;
+      }
+
+      // chatId 설정 후 입력창에 이미 텍스트 있으면 버튼 활성화
+      if (input.value.trim()) sendBtn.disabled = false;
+
+      // 메시지 실시간 구독
+      let prevDate = '';
+      let isFirst  = true;
+
+      subscribeMessages(chatId, (messages) => {
+        if (!messages.length) return;
+        prevDate = '';
+        msgList.innerHTML = messages.map(m => {
+          const isMe    = m.uid === myUid;
+          const d       = m.createdAt?.toDate ? m.createdAt.toDate() : new Date();
+          const dateStr = `${d.getMonth()+1}월 ${d.getDate()}일`;
+          const timeStr = d.toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit', hour12:true });
+          let html = '';
+          if (dateStr !== prevDate) {
+            html += `<div class="chat-date-divider">${dateStr}</div>`;
+            prevDate = dateStr;
+          }
+          html += `
+            <div class="chat-bubble-wrap${isMe ? ' mine' : ''}">
+              <div class="chat-bubble">${escHtml(m.text)}</div>
+              <div class="chat-time">${timeStr}</div>
+            </div>`;
+          return html;
+        }).join('');
+
+        if (isFirst) {
+          msgList.scrollTop = msgList.scrollHeight;
+          isFirst = false;
+        } else {
+          const dist = msgList.scrollHeight - msgList.scrollTop - msgList.clientHeight;
+          if (dist < 120) msgList.scrollTop = msgList.scrollHeight;
+        }
+      });
+    })();
   </script>
 </body>
 </html>

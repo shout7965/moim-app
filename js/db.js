@@ -225,8 +225,13 @@ export const subscribeMessages = (chatId, callback) =>
 
 export const subscribeChats = (uid, callback) =>
   onSnapshot(
-    query(collection(db, 'chats'), where('members', 'array-contains', uid), orderBy('lastAt', 'desc')),
-    (snap) => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+    query(collection(db, 'chats'), where('members', 'array-contains', uid)),
+    (snap) => {
+      const chats = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.lastAt?.toMillis?.() || 0) - (a.lastAt?.toMillis?.() || 0));
+      callback(chats);
+    },
   );
 
 // 호스트가 만든 약속의 userMeetings 인덱스를 전체 멤버 기준으로 복구
