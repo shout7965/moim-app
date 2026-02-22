@@ -581,6 +581,10 @@
       });
     }
 
+    function safeImg(url) {
+      return (url || '').replace(/^http:\/\//i, 'https://');
+    }
+
     function renderFriendList() {
       const q = friendSearchInput.value.trim().toLowerCase();
       let filtered = allFriends;
@@ -607,7 +611,7 @@
       }
       friendList.innerHTML = filtered.map(f => `
         <div class="friend-check-item ${selectedFriends.has(f.uid) ? 'selected' : ''}" data-uid="${f.uid}">
-          <div class="avatar">${f.profileImg ? `<img src="${f.profileImg}">` : f.nickname?.[0] || '?'}</div>
+          <div class="avatar">${f.profileImg ? `<img src="${safeImg(f.profileImg)}">` : f.nickname?.[0] || '?'}</div>
           <span class="text-sm font-bold">${f.nickname}</span>
         </div>`).join('');
 
