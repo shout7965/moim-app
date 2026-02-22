@@ -371,7 +371,6 @@
       async function maybeScheduleActiveAt(members) {
         if (activeAtUpdating) return;
         if (meeting.status !== 'pending') return;
-        if (meeting.activeAt) return;
         if (!meeting.place?.lat || !meeting.place?.lng) return;
 
         const allNonDeclined = members.filter(m => m.status !== 'declined');
@@ -380,21 +379,30 @@
         if (!allAccepted) return;
         const allTransportSet = allNonDeclined.every(m => !!m.transport);
         if (!allTransportSet) return;
-        const allDepartureSet = allNonDeclined.every(m =>
-          Number.isFinite(m.departureLat) && Number.isFinite(m.departureLng)
+        const allOriginSet = allNonDeclined.every(m =>
+          (Number.isFinite(m.departureLat) && Number.isFinite(m.departureLng)) ||
+          (Number.isFinite(m.lat) && Number.isFinite(m.lng))
         );
-        if (!allDepartureSet) return;
+        if (!allOriginSet) return;
 
         try {
           activeAtUpdating = true;
           const etas = await Promise.all(allNonDeclined.map(m =>
-            calcEta(m.transport, m.departureLat, m.departureLng, meeting.place.lat, meeting.place.lng)
+            calcEta(
+              m.transport,
+              Number.isFinite(m.departureLat) ? m.departureLat : m.lat,
+              Number.isFinite(m.departureLng) ? m.departureLng : m.lng,
+              meeting.place.lat,
+              meeting.place.lng
+            )
           ));
           const maxEta = Math.max(...etas.filter(v => Number.isFinite(v)));
           if (!Number.isFinite(maxEta)) return;
           const hours = Math.round(maxEta / 60);
           const activeAt = new Date(Date.now() + hours * 60 * 60 * 1000);
-          await updateMeeting(meetingId, { activeAt });
+          const updates = { activeAt };
+          if (activeAt <= new Date()) updates.status = 'active';
+          await updateMeeting(meetingId, updates);
           meeting.activeAt = activeAt;
           updateTrackingBtn();
         } catch (e) {
