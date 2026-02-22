@@ -506,7 +506,7 @@
               declined: '거절', arrived: '도착완료',
             };
             return `
-              <div class="friend-item">
+              <div class="friend-item" style="gap:8px">
                 <div class="avatar">
                   ${m.profileImg ? `<img src="${m.profileImg}">` : (m.nickname?.[0] || '?')}
                 </div>
@@ -514,6 +514,7 @@
                   <div class="friend-name">${m.nickname} ${m.uid === myUid ? '(나)' : ''}</div>
                   <div class="text-xs text-muted">${m.transport ? { walk:'도보', bike:'자전거', transit:'대중교통', car:'자가용' }[m.transport] + ' · ' : ''}${statusTextMap[m.status] || '-'}</div>
                 </div>
+                ${m.uid !== myUid ? `<button class="btn btn-secondary btn-sm" onclick="location.href='/pages/chat.html?uid=${m.uid}'">💬</button>` : ''}
                 <div class="status-dot ${statusDotMap[m.status] || 'dot-gray'}"></div>
               </div>`;
           }).join('');
