@@ -20,7 +20,7 @@ service cloud.firestore {
       allow get: if request.auth != null;
       // 목록 쿼리(홈 피드): 호스트 또는 멤버만
       allow list: if request.auth != null
-        && (resource.data.hostId == request.auth.uid
+        && (get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid
             || exists(/databases/$(database)/documents/meetings/$(meetingId)/members/$(request.auth.uid)));
       // 생성은 인증된 사용자
       allow create: if request.auth != null;

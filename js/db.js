@@ -142,10 +142,14 @@ export const getMember = (meetingId, uid) =>
   getDoc(doc(db, 'meetings', meetingId, 'members', uid)).then(s => s.exists() ? s.data() : null);
 
 export const subscribeMembers = (meetingId, callback) =>
-  onSnapshot(collection(db, 'meetings', meetingId, 'members'), (snap) => {
-    const members = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
-    callback(members);
-  });
+  onSnapshot(
+    collection(db, 'meetings', meetingId, 'members'),
+    (snap) => {
+      const members = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+      callback(members);
+    },
+    (err) => console.warn('subscribeMembers error:', err),
+  );
 
 export const updateMemberLocation = (meetingId, uid, lat, lng, eta) =>
   updateDoc(doc(db, 'meetings', meetingId, 'members', uid), {
