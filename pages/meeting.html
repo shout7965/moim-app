@@ -98,6 +98,7 @@
         <button class="btn btn-secondary btn-sm" id="departSearchBtn">검색</button>
       </div>
       <div id="departSearchResults"></div>
+      <div id="departMap" class="hidden" style="height:220px;border-radius:var(--radius);overflow:hidden;margin-top:8px"></div>
       <button class="btn btn-secondary btn-sm btn-block" id="departCancelBtn" style="margin-top:10px">위치 없이 수락</button>
     </div>
   </div>
@@ -123,6 +124,7 @@
   <script type="module">
     import { requireAuth, formatDateTime, showToast, getParam } from '/main.js';
     import { getMeeting, getMember, setMember, subscribeMembers, updateMeeting, getFriends, inviteMember, joinMeetingByLink } from '/js/db.js';
+    import { initMap, setMarker, closeInfoWindow, centerOnMyLocation } from '/js/kakaomap.js';
     import { shareMeetingLink } from '/js/invite.js';
     import { WORKER_URL } from '/js/firebase-config.js';
     import { doc, deleteDoc, collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -137,10 +139,13 @@
     let changeStatus = async () => {};
 
     // ── 동기 함수들 (이벤트 핸들러 등록용) ──
+    let departMapInstance = null;
+    let departMapClickBound = false;
     function closeDepartureModal() {
       document.getElementById('departureModal').classList.add('hidden');
       document.getElementById('departSearchResults').innerHTML = '';
       document.getElementById('departSearchInput').value = '';
+      document.getElementById('departMap').classList.add('hidden');
     }
 
     async function searchDeparture(q) {
@@ -166,6 +171,41 @@
       });
     }
 
+    async function enableDepartPinPick() {
+      closeInfoWindow();
+      const mapEl = document.getElementById('departMap');
+      mapEl.classList.remove('hidden');
+      document.getElementById('departSearchResults').innerHTML = '';
+
+      if (!departMapInstance) {
+        departMapInstance = await initMap('departMap', { lat: 37.5665, lng: 126.978, level: 4 });
+      } else {
+        departMapInstance.relayout();
+      }
+
+      try {
+        const { lat, lng } = await centerOnMyLocation();
+        departMapInstance.setCenter(new kakao.maps.LatLng(lat, lng));
+        departMapInstance.setLevel(4);
+      } catch (e) {
+        // 위치 권한 거부 등은 무시하고 기본 위치 유지
+      }
+
+      if (!departMapClickBound) {
+        kakao.maps.event.addListener(departMapInstance, 'click', (mouseEvent) => {
+          const lat = mouseEvent.latLng.getLat();
+          const lng = mouseEvent.latLng.getLng();
+          const name = '지도에서 지정';
+          setMarker(lat, lng, name);
+          closeDepartureModal();
+          changeStatus('accepted', { lat, lng, name });
+        });
+        departMapClickBound = true;
+      }
+
+      showToast('지도를 탭해 출발 위치를 선택하세요', 'info');
+    }
+
     function initDepartureModal() {
       document.getElementById('departAutoBtn').addEventListener('click', async () => {
         closeDepartureModal();
@@ -178,11 +218,13 @@
       document.getElementById('departSearchBtn').addEventListener('click', () => {
         const q = document.getElementById('departSearchInput').value.trim();
         if (q) searchDeparture(q);
+        else enableDepartPinPick();
       });
       document.getElementById('departSearchInput').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           const q = e.target.value.trim();
           if (q) searchDeparture(q);
+          else enableDepartPinPick();
         }
       });
     }
