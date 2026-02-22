@@ -230,7 +230,8 @@ async function handleTransitEta(request, env) {
     if (durationSec == null) return err('No route found');
     return json({ minutes: Math.ceil(durationSec / 60) });
   } catch (e) {
-    return err(`Mobility API error: ${e.message || 'failed'}`, 500);
+    // 실패 시 500 대신 null 반환 (클라이언트가 fallback 계산)
+    return json({ minutes: null, error: `Mobility API error: ${e.message || 'failed'}` }, 200);
   }
 }
 

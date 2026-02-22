@@ -520,7 +520,7 @@
             try {
               const etaRes = await fetch(`${WORKER_URL}/api/transit-eta?origin_lat=${p.lat}&origin_lng=${p.lng}&dest_lat=${c.lat}&dest_lng=${c.lng}`);
               const eta = await etaRes.json();
-              if (eta.minutes) {
+              if (eta?.minutes) {
                 times.push(eta.minutes);
                 continue;
               }
