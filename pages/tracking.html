@@ -121,11 +121,6 @@
       location.href = `/pages/meeting.html?id=${meetingId}&noredirect=1`;
       return;
     }
-    if (!isActiveNow()) {
-      showToast('아직 진행 중이 아닙니다', 'info');
-      location.href = `/pages/meeting.html?id=${meetingId}&noredirect=1`;
-      return;
-    }
 
     // 상단 정보
     document.getElementById('meetingTitleTrack').textContent = meeting.title;
