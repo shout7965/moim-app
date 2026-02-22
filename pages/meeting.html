@@ -197,22 +197,42 @@
       } catch { location.href = '/index.html'; return; }
 
       // 약속 정보 로드
-      try {
-        meeting = await getMeeting(meetingId);
-      } catch (e) {
-        showToast('약속 정보를 불러오지 못했습니다', 'error');
-        document.getElementById('myStatusArea').innerHTML = `
-          <div class="card-sm" style="text-align:center">
-            <div class="text-sm text-muted">약속 정보를 불러오지 못했습니다.</div>
-            <div class="text-xs text-muted" style="margin-top:6px">잠시 후 다시 시도해주세요.</div>
-          </div>`;
-        return;
+      async function loadMeeting() {
+        try {
+          meeting = await getMeeting(meetingId);
+          return true;
+        } catch (e) {
+          console.warn('getMeeting error:', e);
+          const code = e?.code ? `(${e.code})` : '';
+          const msg = e?.message ? String(e.message) : '';
+          showToast('약속 정보를 불러오지 못했습니다', 'error');
+          document.getElementById('myStatusArea').innerHTML = `
+            <div class="card-sm" style="text-align:center">
+              <div class="text-sm text-muted">약속 정보를 불러오지 못했습니다.</div>
+              <div class="text-xs text-muted" style="margin-top:6px">잠시 후 다시 시도해주세요.</div>
+              <div class="text-xs text-muted" style="margin-top:6px">ID: ${meetingId} ${code}</div>
+              ${msg ? `<div class="text-xs text-muted" style="margin-top:4px;word-break:break-all">${msg}</div>` : ''}
+              <button class="btn btn-secondary btn-sm" id="retryMeetingBtn" style="margin-top:8px">다시 시도</button>
+            </div>`;
+          document.getElementById('retryMeetingBtn')?.addEventListener('click', async () => {
+            document.getElementById('myStatusArea').innerHTML = '';
+            const ok = await loadMeeting();
+            if (ok) {
+              location.reload();
+            }
+          });
+          return false;
+        }
       }
+
+      const ok = await loadMeeting();
+      if (!ok) return;
       if (!meeting) {
         showToast('약속을 찾을 수 없거나 삭제되었습니다', 'error');
         document.getElementById('myStatusArea').innerHTML = `
           <div class="card-sm" style="text-align:center">
             <div class="text-sm text-muted">약속이 없거나 삭제되었습니다.</div>
+            <div class="text-xs text-muted" style="margin-top:6px">ID: ${meetingId}</div>
           </div>`;
         return;
       }
