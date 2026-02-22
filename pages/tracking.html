@@ -82,22 +82,37 @@
     import { calcEta, etaLabel, etaClass } from '/js/eta.js';
     import { WORKER_URL } from '/js/firebase-config.js';
 
-    let myUid, myProfile, meeting;
     const meetingId = getParam('id');
     if (!meetingId) { location.href = '/pages/home.html'; }
+
+    // ── 뒤로가기/홈 함수는 즉시 정의 (로딩 중 클릭해도 동작해야 함) ──
+    function stopAndGoBack() {
+      stopLocationTracking();
+      location.href = `/pages/meeting.html?id=${meetingId}&noredirect=1`;
+    }
+    function stopAndGoHome() {
+      stopLocationTracking();
+      location.href = '/pages/home.html';
+    }
+    window.stopAndGoBack = stopAndGoBack;
+    window.stopAndGoHome = stopAndGoHome;
+
+    (async () => {
+    let myUid, myProfile, meeting;
 
     try {
       const s = await requireAuth();
       myUid = s.user.uid; myProfile = s.profile;
-    } catch { location.href = '/index.html'; }
+    } catch { location.href = '/index.html'; return; }
 
     meeting = await getMeeting(meetingId);
-    if (!meeting) { location.href = '/pages/home.html'; }
+    if (!meeting) { location.href = '/pages/home.html'; return; }
 
     const myMember = await getMember(meetingId, myUid);
     if (!myMember || myMember.status === 'declined') {
       showToast('참여 확정된 멤버만 추적 화면을 사용할 수 있습니다', 'error');
-      location.href = `/pages/meeting.html?id=${meetingId}`;
+      location.href = `/pages/meeting.html?id=${meetingId}&noredirect=1`;
+      return;
     }
 
     // 상단 정보
@@ -302,19 +317,10 @@
       }
     });
 
-    function stopAndGoBack() {
-      stopLocationTracking();
-      location.href = `/pages/meeting.html?id=${meetingId}&noredirect=1`;
-    }
-    function stopAndGoHome() {
-      stopLocationTracking();
-      location.href = '/pages/home.html';
-    }
-    window.stopAndGoBack = stopAndGoBack;
-    window.stopAndGoHome = stopAndGoHome;
-
     // 페이지 언로드 시 추적 중지
     window.addEventListener('beforeunload', stopLocationTracking);
+
+    })(); // async IIFE 끝
   </script>
 </body>
 </html>
