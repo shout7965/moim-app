@@ -309,6 +309,18 @@
         const at = meeting.activeAt.toDate ? meeting.activeAt.toDate() : new Date(meeting.activeAt);
         return at <= new Date();
       };
+      const promoteActiveIfDue = async () => {
+        if (meeting.status !== 'pending') return;
+        if (!meeting.activeAt) return;
+        if (!isActiveNow()) return;
+        try {
+          await updateMeeting(meetingId, { status: 'active' });
+          meeting.status = 'active';
+        } catch (e) {
+          console.warn('promote active error:', e);
+        }
+      };
+      await promoteActiveIfDue();
 
       // active 약속 + 수락한 멤버 → 바로 추적 페이지로 (noredirect=1이면 유지)
       if (
@@ -482,6 +494,8 @@
 
           // 모두 수락 + 이동수단/출발지 설정 완료 시 activeAt 스케줄
           maybeScheduleActiveAt(members);
+          // activeAt 시간이 지났으면 상태 승격
+          promoteActiveIfDue();
         });
       }
 

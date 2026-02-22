@@ -21,11 +21,34 @@ export async function addFriendByCode(myUid, myProfile, code) {
 
 // 내 초대코드 공유
 export async function shareMyCode(inviteCode) {
-  const text = `어디쯤왔어?? 앱에서 나를 친구로 추가하려면 초대코드를 입력하세요: ${inviteCode}\nhttps://moim-app.workers.dev`;
+  const url = `${location.origin}/pages/friends.html?code=${encodeURIComponent(inviteCode)}`;
+  const text = `어디쯤왔어?? 앱에서 나를 친구로 추가하려면 초대코드를 입력하세요: ${inviteCode}`;
+
+  await ensureKakaoSDK();
+  if (window.Kakao?.Share?.sendDefault) {
+    try {
+      window.Kakao.Share.sendDefault({
+        objectType: 'feed',
+        content: {
+          title: '어디쯤왔어?? 친구 추가',
+          description: '버튼을 눌러 바로 친구 추가 화면으로 이동하세요.',
+          imageUrl: `${location.origin}/icons/icon.svg`,
+          link: { mobileWebUrl: url, webUrl: url },
+        },
+        buttons: [
+          { title: '친구 추가하기', link: { mobileWebUrl: url, webUrl: url } },
+        ],
+      });
+      return;
+    } catch (e) {
+      console.warn('Kakao share failed:', e);
+    }
+  }
+
   if (navigator.share) {
-    await navigator.share({ title: '어디쯤왔어?? 초대코드', text });
+    await navigator.share({ title: '어디쯤왔어?? 초대코드', text, url });
   } else {
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(`${text}\n${url}`);
     showToast('초대코드가 복사되었습니다!', 'success');
   }
 }
