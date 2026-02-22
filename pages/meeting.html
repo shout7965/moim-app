@@ -60,6 +60,7 @@
         <button class="btn btn-primary btn-block" id="startTrackingBtn">
           📍 실시간 위치 공유/조회
         </button>
+        <div id="meetingCountdown" class="text-xs text-muted" style="text-align:center;margin-top:6px"></div>
       </div>
 
       <!-- 참여자 목록 -->
@@ -369,6 +370,7 @@
       let membersSubscribed = false;
       let activeAtUpdating = false;
       let trackingTimer = null;
+      let countdownTimer = null;
       async function maybeScheduleActiveAt(members) {
         if (activeAtUpdating) return;
         if (meeting.status !== 'pending') return;
@@ -412,6 +414,32 @@
         btn.textContent = '📍 실시간 위치 공유/조회';
         btn.disabled = false;
         btn.title = '';
+        updateCountdown();
+        if (!countdownTimer) {
+          countdownTimer = setInterval(updateCountdown, 1000);
+        }
+      }
+
+      function formatCountdown(ms) {
+        const totalSec = Math.max(0, Math.floor(ms / 1000));
+        const h = Math.floor(totalSec / 3600);
+        const m = Math.floor((totalSec % 3600) / 60);
+        const s = totalSec % 60;
+        if (h > 0) return `${h}시간 ${String(m).padStart(2,'0')}분`;
+        return `${m}분 ${String(s).padStart(2,'0')}초`;
+      }
+
+      function updateCountdown() {
+        const el = document.getElementById('meetingCountdown');
+        if (!el) return;
+        if (!meeting?.scheduledAt) { el.textContent = ''; return; }
+        const at = meeting.scheduledAt.toDate ? meeting.scheduledAt.toDate() : new Date(meeting.scheduledAt);
+        const left = at.getTime() - Date.now();
+        if (left <= 0) {
+          el.textContent = '약속 시간이 되었습니다';
+        } else {
+          el.textContent = `약속까지 ${formatCountdown(left)} 남음`;
+        }
       }
 
       function ensureMemberSubscription() {
