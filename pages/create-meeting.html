@@ -474,14 +474,33 @@
           return;
         }
 
+        const haversineKm = (a, b) => {
+          const toRad = (v) => (v * Math.PI) / 180;
+          const R = 6371;
+          const dLat = toRad(b.lat - a.lat);
+          const dLng = toRad(b.lng - a.lng);
+          const lat1 = toRad(a.lat);
+          const lat2 = toRad(b.lat);
+          const x = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+          return 2 * R * Math.asin(Math.sqrt(x));
+        };
+
         const scored = [];
         for (const c of candidates) {
           const times = [];
           for (const p of points.slice(0, 5)) {
-            const etaRes = await fetch(`${WORKER_URL}/api/transit-eta?origin_lat=${p.lat}&origin_lng=${p.lng}&dest_lat=${c.lat}&dest_lng=${c.lng}`);
-            const eta = await etaRes.json();
-            if (!eta.minutes) { times.length = 0; break; }
-            times.push(eta.minutes);
+            try {
+              const etaRes = await fetch(`${WORKER_URL}/api/transit-eta?origin_lat=${p.lat}&origin_lng=${p.lng}&dest_lat=${c.lat}&dest_lng=${c.lng}`);
+              const eta = await etaRes.json();
+              if (eta.minutes) {
+                times.push(eta.minutes);
+                continue;
+              }
+            } catch {}
+            // ETA 실패 시 직선거리 기반 근사 (대중교통 평균 속도 20km/h)
+            const km = haversineKm(p, c);
+            const minutes = Math.max(5, Math.round((km / 20) * 60));
+            times.push(minutes);
           }
           if (!times.length) continue;
           const avg = times.reduce((a,b)=>a+b,0) / times.length;
