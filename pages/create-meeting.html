@@ -458,19 +458,38 @@
       centroid.lat /= points.length;
       centroid.lng /= points.length;
 
-      const query = themeQuery(aiThemeSelect.value, aiKeywords.value.trim());
-      if (!query) { showToast('테마/키워드를 입력하세요', 'error'); return; }
+      const theme = aiThemeSelect.value;
+      const keywords = aiKeywords.value.trim();
+      const baseQuery = themeQuery(theme, keywords);
+      if (!baseQuery) { showToast('테마/키워드를 입력하세요', 'error'); return; }
 
       aiRunBtn.disabled = true;
       aiRunBtn.textContent = '추천 중...';
       aiResults.innerHTML = '';
 
       try {
-        const res = await fetch(`${WORKER_URL}/api/search-places?q=${encodeURIComponent(query)}&lat=${centroid.lat}&lng=${centroid.lng}&radius=2000`);
-        const data = await res.json();
-        const candidates = (data.results || []).slice(0, 6);
+        const queries = [
+          { q: baseQuery, radius: 3000, label: baseQuery },
+          { q: themeQuery(theme, ''), radius: 3000, label: themeQuery(theme, '') },
+          { q: keywords, radius: 3000, label: keywords },
+          { q: baseQuery, radius: 5000, label: baseQuery },
+          { q: themeQuery(theme, ''), radius: 5000, label: themeQuery(theme, '') },
+          { q: keywords, radius: 5000, label: keywords },
+        ].filter(x => x.q);
+
+        let candidates = [];
+        let usedLabel = '';
+        for (const q of queries) {
+          const res = await fetch(`${WORKER_URL}/api/search-places?q=${encodeURIComponent(q.q)}&lat=${centroid.lat}&lng=${centroid.lng}&radius=${q.radius}`);
+          const data = await res.json();
+          candidates = (data.results || []).slice(0, 8);
+          if (candidates.length) { usedLabel = q.label; break; }
+        }
+
         if (!candidates.length) {
-          aiResults.innerHTML = '<div class="text-sm text-muted">추천 결과가 없습니다.</div>';
+          aiResults.innerHTML = `
+            <div class="text-sm text-muted">추천 결과가 없습니다.</div>
+            <div class="text-xs text-muted" style="margin-top:6px">검색어를 단순하게 줄여보세요.</div>`;
           return;
         }
 
@@ -510,7 +529,9 @@
         }
         scored.sort((a,b)=>a.score-b.score);
 
-        aiResults.innerHTML = scored.map(s => `
+        aiResults.innerHTML = `
+          <div class="text-xs text-muted" style="margin-bottom:6px">검색어: ${usedLabel || baseQuery}</div>
+        ` + scored.map(s => `
           <div class="place-result-item" data-lat="${s.c.lat}" data-lng="${s.c.lng}" data-name="${s.c.name}" data-addr="${s.c.address}">
             <div class="place-result-info">
               <div class="place-result-name">${s.c.name}</div>
