@@ -168,7 +168,7 @@
       return `${kst.getUTCFullYear()}-${pad(kst.getUTCMonth() + 1)}-${pad(kst.getUTCDate())}T${pad(kst.getUTCHours())}:${pad(kst.getUTCMinutes())}`;
     }
 
-    function setDefaultDateTime() {
+    function setDefaultDateTime(force = false) {
       const input = document.getElementById('dateTimeInput');
       if (!input) return;
       const now = new Date();
@@ -178,7 +178,7 @@
       const add = (10 - (m % 10)) % 10;
       rounded.setMinutes(m + add, 0, 0);
       if (rounded.getTime() < kstNow.getTime()) rounded.setMinutes(rounded.getMinutes() + 10, 0, 0);
-      if (!input.value) {
+      if (force || !input.value) {
         input.value = toInputKstValue(rounded);
         return;
       }
@@ -193,7 +193,7 @@
       myUid = s.user.uid; myProfile = s.profile;
     } catch { location.href = '/index.html'; }
 
-    setDefaultDateTime();
+    if (!isEdit) setDefaultDateTime(true);
 
     function toLocalInputValue(date) {
       const d = date instanceof Date ? date : new Date(date);
