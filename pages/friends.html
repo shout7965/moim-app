@@ -38,8 +38,18 @@
         </div>
       </div>
 
+      <!-- 그룹 필터 -->
+      <div class="section-title" style="margin-top:8px">내 그룹</div>
+      <div class="card-sm">
+        <div class="input-row">
+          <input class="input" id="groupNameInput" placeholder="새 그룹 이름" maxlength="20" />
+          <button class="btn btn-primary btn-sm" id="addGroupBtn" style="flex-shrink:0;white-space:nowrap">추가</button>
+        </div>
+        <div id="groupList" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px"></div>
+      </div>
+
       <!-- 친구 목록 -->
-      <div class="section-title" style="margin-top:8px">친구 목록 <span id="friendCount" class="text-muted">(0)</span></div>
+      <div class="section-title" style="margin-top:12px">친구 목록 <span id="friendCount" class="text-muted">(0)</span></div>
       <div id="friendList">
         <div class="empty-state">
           <div class="empty-state-icon">👥</div>
@@ -48,15 +58,6 @@
         </div>
       </div>
 
-      <!-- 내 그룹 -->
-      <div class="section-title" style="margin-top:16px">내 그룹</div>
-      <div class="card-sm">
-        <div class="input-row">
-          <input class="input" id="groupNameInput" placeholder="새 그룹 이름" maxlength="20" />
-          <button class="btn btn-primary btn-sm" id="addGroupBtn" style="flex-shrink:0;white-space:nowrap">추가</button>
-        </div>
-        <div id="groupList" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px"></div>
-      </div>
     </div>
   </div>
 
@@ -175,6 +176,7 @@
     // 그룹 상태
     let friendGroups = Array.isArray(myProfile.friendGroups) ? myProfile.friendGroups : [];
     let currentGroupTargetUid = null;
+    let selectedGroupId = 'all';
 
     function saveGroups() {
       myProfile.friendGroups = friendGroups;
@@ -183,21 +185,42 @@
 
     function renderGroups() {
       if (!friendGroups.length) {
-        groupListEl.innerHTML = '<div class="text-xs text-muted">아직 그룹이 없습니다.</div>';
+        groupListEl.innerHTML = `
+          <div class="badge badge-gray" data-gid="all" style="cursor:pointer">전체</div>
+          <div class="text-xs text-muted" style="margin-left:6px">아직 그룹이 없습니다.</div>`;
+        groupListEl.querySelector('[data-gid="all"]').addEventListener('click', () => {
+          selectedGroupId = 'all';
+          renderGroups();
+          renderFriends();
+        });
         return;
       }
-      groupListEl.innerHTML = friendGroups.map(g => `
-        <div class="badge badge-gray" style="display:inline-flex;align-items:center;gap:6px">
-          ${g.name} <span class="text-xs text-muted">(${(g.memberUids || []).length})</span>
-          <button class="btn-icon-round" data-gid="${g.id}" title="삭제" style="width:18px;height:18px;font-size:12px">✖</button>
-        </div>
-      `).join('');
-      groupListEl.querySelectorAll('button[data-gid]').forEach(btn => {
+      const chips = [
+        `<div class="badge badge-gray ${selectedGroupId === 'all' ? 'selected' : ''}" data-gid="all" style="cursor:pointer">전체</div>`,
+        ...friendGroups.map(g => `
+          <div class="badge badge-gray ${selectedGroupId === g.id ? 'selected' : ''}" data-gid="${g.id}" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+            ${g.name} <span class="text-xs text-muted">(${(g.memberUids || []).length})</span>
+            <button class="btn-icon-round" data-del-gid="${g.id}" title="삭제" style="width:18px;height:18px;font-size:12px">✖</button>
+          </div>
+        `),
+      ].join('');
+      groupListEl.innerHTML = chips;
+
+      groupListEl.querySelectorAll('[data-gid]').forEach(chip => {
+        chip.addEventListener('click', (e) => {
+          if (e.target?.dataset?.delGid) return;
+          selectedGroupId = chip.dataset.gid;
+          renderGroups();
+          renderFriends();
+        });
+      });
+      groupListEl.querySelectorAll('button[data-del-gid]').forEach(btn => {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
-          const gid = btn.dataset.gid;
+          const gid = btn.dataset.delGid;
           if (!confirm('그룹을 삭제하시겠습니까?')) return;
           friendGroups = friendGroups.filter(g => g.id !== gid);
+          if (selectedGroupId === gid) selectedGroupId = 'all';
           await saveGroups();
           renderGroups();
           renderFriends();
@@ -257,17 +280,24 @@
 
     // 친구 목록 렌더링
     async function renderFriends() {
-      const friends = await getFriends(myProfile.friends || []);
+      const allFriends = await getFriends(myProfile.friends || []);
+      const friends = selectedGroupId === 'all'
+        ? allFriends
+        : allFriends.filter(f =>
+            friendGroups.find(g => g.id === selectedGroupId)?.memberUids?.includes(f.uid)
+          );
+      const totalCount = allFriends.length;
       friendCount.textContent = `(${friends.length})`;
       if (!friends.length) {
         friendList.innerHTML = `
           <div class="empty-state">
             <div class="empty-state-icon">👥</div>
-            <div class="empty-state-title">아직 친구가 없어요</div>
-            <div class="empty-state-sub">초대코드로 친구를 추가해보세요</div>
+            <div class="empty-state-title">${selectedGroupId === 'all' ? '아직 친구가 없어요' : '이 그룹에 친구가 없습니다'}</div>
+            <div class="empty-state-sub">${selectedGroupId === 'all' ? '초대코드로 친구를 추가해보세요' : '그룹에 친구를 추가해보세요'}</div>
           </div>`;
         return;
       }
+      friendCount.textContent = `(${friends.length}/${totalCount})`;
       friendList.innerHTML = friends.map(f => {
         const groupNames = friendGroups
           .filter(g => (g.memberUids || []).includes(f.uid))
