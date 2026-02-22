@@ -538,9 +538,8 @@
         }
         scored.sort((a,b)=>a.score-b.score);
 
-        aiResults.innerHTML = `
-          <div class="text-xs text-muted" style="margin-bottom:6px">검색어: ${usedLabel || baseQuery}</div>
-        ` + scored.map(s => `
+        const defaultCount = 3;
+        const renderItems = (list) => list.map(s => `
           <div class="place-result-item" data-lat="${s.c.lat}" data-lng="${s.c.lng}" data-name="${s.c.name}" data-addr="${s.c.address}">
             <div class="place-result-info">
               <div class="place-result-name">${s.c.name}</div>
@@ -548,23 +547,41 @@
               <div class="text-xs text-muted">평균 ${Math.round(s.avg)}분 · 편차 ${Math.round(s.std)}분 · 범위 ${s.min}-${s.max}분</div>
             </div>
           </div>`).join('');
+        const top = scored.slice(0, defaultCount);
+        const rest = scored.slice(defaultCount);
+        aiResults.innerHTML = `
+          <div class="text-xs text-muted" style="margin-bottom:6px">검색어: ${usedLabel || baseQuery}</div>
+          ${renderItems(top)}
+          ${rest.length ? '<button class="btn btn-secondary btn-sm" id="aiMoreBtn" style="margin-top:6px;width:100%">더보기</button>' : ''}
+        `;
         if (!scored.length) {
           aiResults.innerHTML = '<div class="text-sm text-muted">추천 결과가 없습니다.</div>';
         }
 
-        aiResults.querySelectorAll('.place-result-item').forEach(item => {
-          item.addEventListener('click', async () => {
-            const place = {
-              name: item.dataset.name,
-              address: item.dataset.addr,
-              lat: parseFloat(item.dataset.lat),
-              lng: parseFloat(item.dataset.lng),
-            };
-            await selectPlace(place);
-            aiModal.classList.add('hidden');
-            showToast('추천 장소가 선택되었습니다', 'success');
+        function bindResultClicks() {
+          aiResults.querySelectorAll('.place-result-item').forEach(item => {
+            item.addEventListener('click', async () => {
+              const place = {
+                name: item.dataset.name,
+                address: item.dataset.addr,
+                lat: parseFloat(item.dataset.lat),
+                lng: parseFloat(item.dataset.lng),
+              };
+              await selectPlace(place);
+              aiModal.classList.add('hidden');
+              showToast('추천 장소가 선택되었습니다', 'success');
+            });
           });
-        });
+        }
+
+        bindResultClicks();
+        if (rest.length) {
+          document.getElementById('aiMoreBtn')?.addEventListener('click', () => {
+            document.getElementById('aiMoreBtn')?.remove();
+            aiResults.innerHTML += renderItems(rest);
+            bindResultClicks();
+          });
+        }
       } catch (e) {
         showToast('추천 실패: ' + e.message, 'error');
       } finally {
