@@ -248,7 +248,7 @@ async function handleSearchPlaces(request, env) {
 
   const apiUrl = new URL('https://dapi.kakao.com/v2/local/search/keyword.json');
   apiUrl.searchParams.set('query', q);
-  apiUrl.searchParams.set('size',  '8');
+  apiUrl.searchParams.set('size',  '15');
   if (lat && lng) {
     apiUrl.searchParams.set('y', lat);
     apiUrl.searchParams.set('x', lng);

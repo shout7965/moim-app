@@ -491,8 +491,12 @@
             aiResults.innerHTML = `<div class="text-sm text-muted">검색 실패: ${data.error}</div>`;
             return;
           }
-          candidates = (data.results || []).slice(0, 8);
-          if (candidates.length) { usedLabel = q.label; break; }
+          const list = data.results || [];
+          if (list.length) {
+            if (!usedLabel) usedLabel = q.label;
+            candidates.push(...list);
+          }
+          if (candidates.length >= 20) break;
         }
 
         if (!candidates.length) {
@@ -501,6 +505,14 @@
             <div class="text-xs text-muted" style="margin-top:6px">검색어를 단순하게 줄여보세요.</div>`;
           return;
         }
+        // 중복 제거 (id 우선, 없으면 좌표+이름)
+        const seen = new Set();
+        candidates = candidates.filter(c => {
+          const key = c.id ? `id:${c.id}` : `pos:${c.lat},${c.lng},${c.name}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        }).slice(0, 20);
 
         const haversineKm = (a, b) => {
           const toRad = (v) => (v * Math.PI) / 180;
