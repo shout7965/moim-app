@@ -196,6 +196,15 @@
 
     myMember = await getMember(meetingId, myUid);
 
+    // active 약속 + 수락한 멤버 → 바로 추적 페이지로 (noredirect=1이면 유지)
+    if (
+      meeting.status === 'active' &&
+      myMember && (myMember.status === 'accepted' || myMember.status === 'arrived') &&
+      getParam('noredirect') !== '1'
+    ) {
+      location.href = `/pages/tracking.html?id=${meetingId}`;
+    }
+
     // 헤더 렌더링
     document.getElementById('meetingTitle').textContent = meeting.title;
     document.getElementById('placeName').textContent    = meeting.place?.name || '-';
