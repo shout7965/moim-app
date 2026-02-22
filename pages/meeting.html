@@ -502,8 +502,16 @@
               b.classList.toggle('selected', b.dataset.transport === myMember.transport);
             });
           }
-          if (meeting.status !== 'done' && isActiveNow()) {
+          if (meeting.status !== 'done') {
             trackingArea.classList.remove('hidden');
+            const btn = document.getElementById('startTrackingBtn');
+            if (isActiveNow()) {
+              btn.disabled = false;
+              btn.textContent = '📍 실시간 위치 공유/조회';
+            } else {
+              btn.disabled = true;
+              btn.textContent = '⏳ 아직 진행 중이 아닙니다';
+            }
           }
         }
       }
