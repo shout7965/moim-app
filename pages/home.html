@@ -68,7 +68,7 @@
   <script type="module">
     import { requireAuth }       from '/main.js';
     import { showToast, formatDateTime } from '/main.js';
-    import { subscribeMyMeetings, syncUserMeetings, repairHostUserMeetings } from '/js/db.js';
+    import { subscribeMyMeetings, syncUserMeetings, repairHostUserMeetings, getUser } from '/js/db.js';
     import { db } from '/js/firebase-config.js';
     import { doc, deleteDoc, collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
     import { initFCM, setupForegroundMessages } from '/js/fcm.js';
@@ -110,6 +110,7 @@
     const activeBannerEl = document.getElementById('activeBanner');
     const activeEmptyEl  = document.getElementById('activeEmpty');
     const toggleDoneBtn  = document.getElementById('toggleDoneBtn');
+    const userCache = new Map();
 
     let doneExpanded = false;
     toggleDoneBtn.addEventListener('click', () => {
@@ -172,6 +173,7 @@
           });
         });
         bindMeetingActions(pendingEl);
+        hydrateParticipants(pendingEl, pending);
       }
 
       if (!done.length) {
@@ -184,6 +186,7 @@
           });
         });
         bindMeetingActions(doneEl);
+        hydrateParticipants(doneEl, done.slice(0, 5));
       }
     });
 
@@ -253,9 +256,51 @@
               <span class="icon">🕐</span>
               <span>${formatDateTime(m.scheduledAt)}</span>
             </div>
+            <div class="meeting-meta-row" data-participants="${m.id}">
+              <span class="icon">👥</span>
+              <span class="text-muted">참여자 불러오는 중...</span>
+            </div>
             ${isHost ? '<div class="meeting-meta-row"><span class="icon">👑</span><span class="text-accent">내가 만든 약속</span></div>' : ''}
           </div>
         </div>`;
+    }
+
+    async function fetchUserCached(uid) {
+      if (userCache.has(uid)) return userCache.get(uid);
+      const user = await getUser(uid).catch(() => null);
+      userCache.set(uid, user);
+      return user;
+    }
+
+    function hydrateParticipants(container, meetings) {
+      const rows = container.querySelectorAll('[data-participants]');
+      const meetingMap = new Map(meetings.map(m => [m.id, m]));
+      rows.forEach(async (row) => {
+        const meetingId = row.dataset.participants;
+        if (!meetingId) return;
+        const meeting = meetingMap.get(meetingId);
+        try {
+          const snap = await getDocs(collection(db, 'meetings', meetingId, 'members'));
+          const uids = snap.docs.map(d => d.id);
+          if (!uids.length) {
+            row.querySelector('span:last-child').textContent = '참여자 없음';
+            return;
+          }
+          const namePromises = uids.slice(0, 3).map(async (uid) => {
+            if (uid === myUid) return '나';
+            const u = await fetchUserCached(uid);
+            return u?.nickname || '알 수 없음';
+          });
+          const names = (await Promise.all(namePromises)).filter(Boolean);
+          const count = uids.length;
+          const more = count > names.length ? ` 외 ${count - names.length}명` : '';
+          row.querySelector('span:last-child').textContent =
+            `참여자 ${count}명: ${names.join(', ')}${more}`;
+        } catch {
+          row.querySelector('span:last-child').textContent =
+            meeting?.hostId === myUid ? '참여자 정보 없음' : '참여자 정보 불러오기 실패';
+        }
+      });
     }
   </script>
 </body>
