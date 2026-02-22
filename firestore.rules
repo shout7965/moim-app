@@ -24,11 +24,11 @@ service cloud.firestore {
             || exists(/databases/$(database)/documents/meetings/$(meetingId)/members/$(request.auth.uid)));
       // 생성은 인증된 사용자
       allow create: if request.auth != null;
-      // 수정은 호스트만 (단, activeAt/status는 멤버도 제한 업데이트 허용)
+      // 수정은 호스트만 (단, activeAt/status/activeNotifiedAt는 멤버도 제한 업데이트 허용)
       allow update: if request.auth.uid == resource.data.hostId
         || (
           exists(/databases/$(database)/documents/meetings/$(meetingId)/members/$(request.auth.uid))
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeAt','status'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeAt','status','activeNotifiedAt'])
         );
       // 삭제는 호스트만
       allow delete: if request.auth.uid == resource.data.hostId;

@@ -311,6 +311,13 @@ export const notifyUser = async (uid, title, body, data = {}) => {
   await notifyToken(user.fcmToken, title, body, data);
 };
 
+export const notifyMembers = async (uids, title, body, data = {}) => {
+  if (!uids?.length) return;
+  await Promise.all(uids.map(async (uid) => {
+    try { await notifyUser(uid, title, body, data); } catch {}
+  }));
+};
+
 export const notifyChatMembers = async (chatId, senderUid, senderName, text) => {
   const chatSnap = await getDoc(doc(db, 'chats', chatId));
   if (!chatSnap.exists()) return;

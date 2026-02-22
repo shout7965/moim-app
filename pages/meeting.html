@@ -125,7 +125,7 @@
 
   <script type="module">
     import { requireAuth, formatDateTime, showToast, getParam } from '/main.js';
-    import { getMeeting, getMember, setMember, subscribeMembers, updateMeeting, getFriends, inviteMember, joinMeetingByLink } from '/js/db.js';
+    import { getMeeting, getMember, setMember, subscribeMembers, updateMeeting, getFriends, inviteMember, joinMeetingByLink, notifyMembers } from '/js/db.js';
     import { calcEta } from '/js/eta.js';
     import { initMap, setMarker, closeInfoWindow, centerOnMyLocation } from '/js/kakaomap.js';
     import { shareMeetingLink } from '/js/invite.js';
@@ -316,6 +316,8 @@
         try {
           await updateMeeting(meetingId, { status: 'active' });
           meeting.status = 'active';
+          // 활성화 알림
+          await maybeNotifyActive(latestMembers);
         } catch (e) {
           console.warn('promote active error:', e);
         }
@@ -378,6 +380,30 @@
       let activeAtUpdating = false;
       let trackingTimer = null;
       let countdownTimer = null;
+      let latestMembers = [];
+      let notifyingActive = false;
+
+      async function maybeNotifyActive(members) {
+        if (meeting.activeNotifiedAt) return;
+        if (!members?.length) return;
+        if (notifyingActive) return;
+        try {
+          notifyingActive = true;
+          const title = '약속 시작 임박';
+          const body = `${meeting.title || '약속'} 시간이 다가왔어요. 준비하고 출발하세요!`;
+          await notifyMembers(members.map(m => m.uid), title, body, {
+            url: `/pages/meeting.html?id=${meetingId}`,
+            meetingId,
+          });
+          const now = new Date();
+          await updateMeeting(meetingId, { activeNotifiedAt: now });
+          meeting.activeNotifiedAt = now;
+        } catch (e) {
+          console.warn('active notify error:', e);
+        } finally {
+          notifyingActive = false;
+        }
+      }
       async function maybeScheduleActiveAt(members) {
         if (activeAtUpdating) return;
         if (meeting.status !== 'pending') return;
@@ -464,6 +490,7 @@
         if (membersSubscribed) return;
         membersSubscribed = true;
         subscribeMembers(meetingId, (members) => {
+          latestMembers = members;
           const el = document.getElementById('memberList');
           if (!members.length) {
             el.innerHTML = '<div class="text-sm text-muted">아직 참여자가 없습니다.</div>';
@@ -495,6 +522,8 @@
           maybeScheduleActiveAt(members);
           // activeAt 시간이 지났으면 상태 승격
           promoteActiveIfDue();
+          // 진행중이면 알림
+          if (isActiveNow()) maybeNotifyActive(members);
         });
       }
 
