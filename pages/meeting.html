@@ -405,53 +405,13 @@
         }
       }
 
-      function formatCountdown(ms) {
-        const totalSec = Math.max(0, Math.floor(ms / 1000));
-        const h = Math.floor(totalSec / 3600);
-        const m = Math.floor((totalSec % 3600) / 60);
-        const s = totalSec % 60;
-        if (h > 0) return `${h}시간 ${String(m).padStart(2,'0')}분`;
-        return `${m}분 ${String(s).padStart(2,'0')}초`;
-      }
-
       function updateTrackingBtn() {
         const btn = document.getElementById('startTrackingBtn');
         if (!btn) return;
         if (meeting.status === 'done') { btn.disabled = true; return; }
-
-        if (isActiveNow()) {
-          btn.textContent = '📍 실시간 위치 공유/조회';
-          btn.disabled = false;
-          btn.title = '';
-          return;
-        }
-
-        const targetAt = meeting.activeAt || meeting.scheduledAt;
-        if (targetAt) {
-          const at = targetAt.toDate ? targetAt.toDate() : new Date(targetAt);
-          const left = at.getTime() - Date.now();
-          btn.textContent = `⏳ 시작까지 ${formatCountdown(left)} (위치확인)`;
-          btn.disabled = false;
-          btn.title = '아직 진행 전이지만 위치 확인은 가능합니다';
-        } else {
-          btn.textContent = '⏳ 아직 시작 전입니다 (위치확인)';
-          btn.disabled = false;
-          btn.title = '아직 진행 전이지만 위치 확인은 가능합니다';
-        }
-
-        if (!trackingTimer) {
-          trackingTimer = setInterval(() => {
-          if (isActiveNow()) {
-            btn.textContent = '📍 실시간 위치 공유/조회';
-            return;
-          }
-          const targetAt = meeting.activeAt || meeting.scheduledAt;
-          if (!targetAt) return;
-          const at = targetAt.toDate ? targetAt.toDate() : new Date(targetAt);
-          const left = at.getTime() - Date.now();
-          btn.textContent = `⏳ 시작까지 ${formatCountdown(left)} (위치확인)`;
-        }, 1000);
-      }
+        btn.textContent = '📍 실시간 위치 공유/조회';
+        btn.disabled = false;
+        btn.title = '';
       }
 
       function ensureMemberSubscription() {
