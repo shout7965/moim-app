@@ -235,16 +235,24 @@ async function handleTransitEta(request, env) {
 }
 
 // ===== GET /api/search-places =====
-// Query: q (검색어)
+// Query: q (검색어), lat, lng, radius(optional, meters)
 // 카카오 Local REST API 키워드 검색 (도메인 제한 없음)
 async function handleSearchPlaces(request, env) {
   const url = new URL(request.url);
   const q   = url.searchParams.get('q');
   if (!q) return err('q required');
+  const lat = url.searchParams.get('lat');
+  const lng = url.searchParams.get('lng');
+  const radius = url.searchParams.get('radius');
 
   const apiUrl = new URL('https://dapi.kakao.com/v2/local/search/keyword.json');
   apiUrl.searchParams.set('query', q);
   apiUrl.searchParams.set('size',  '8');
+  if (lat && lng) {
+    apiUrl.searchParams.set('y', lat);
+    apiUrl.searchParams.set('x', lng);
+    if (radius) apiUrl.searchParams.set('radius', radius);
+  }
 
   const res = await fetch(apiUrl.toString(), {
     headers: { Authorization: `KakaoAK ${env.KAKAO_REST_API_KEY}` },

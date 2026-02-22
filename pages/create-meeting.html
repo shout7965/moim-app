@@ -48,6 +48,7 @@
         <div class="input-row">
         <input class="input" id="placeSearch" placeholder="장소 검색 또는 지도에서 핀 지정" />
           <button class="btn btn-secondary btn-sm" id="searchPlaceBtn" style="flex-shrink:0;white-space:nowrap">검색</button>
+          <button class="btn btn-primary btn-sm" id="aiSuggestBtn" style="flex-shrink:0;white-space:nowrap">AI 추천</button>
         </div>
       </div>
 
@@ -102,6 +103,35 @@
       </button>
     </div>
   </nav>
+
+  <!-- AI 추천 모달 -->
+  <div id="aiSuggestModal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-title">AI 장소 추천</div>
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <div class="badge badge-gray selected" data-ai-mode="origin" style="cursor:pointer">출발지 기준</div>
+        <div class="badge badge-gray" data-ai-mode="home" style="cursor:pointer">귀가지 기준</div>
+      </div>
+      <div class="input-row" style="margin-bottom:8px">
+        <select class="input" id="aiTheme" style="flex:1">
+          <option value="meal">식사</option>
+          <option value="drink">술</option>
+          <option value="cafe">카페</option>
+          <option value="etc">기타</option>
+        </select>
+        <input class="input" id="aiKeywords" placeholder="키워드 (예: 아재스탈, 예쁜장소)" />
+      </div>
+      <div class="text-xs text-muted" id="aiPointsLabel" style="margin-bottom:6px">출발지 2개 이상 입력</div>
+      <div id="aiPointsList" style="display:flex;flex-direction:column;gap:8px"></div>
+      <button class="btn btn-secondary btn-sm" id="aiAddPointBtn" style="margin-top:8px">장소 추가</button>
+      <div class="section-title" style="margin-top:12px">추천 결과</div>
+      <div id="aiResults" class="place-results" style="max-height:240px;overflow-y:auto"></div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-secondary btn-sm" style="flex:1" id="aiCloseBtn">닫기</button>
+        <button class="btn btn-primary btn-sm" style="flex:1" id="aiRunBtn">추천하기</button>
+      </div>
+    </div>
+  </div>
 
   <script type="module">
     import { requireAuth, getParam }    from '/main.js';
@@ -295,6 +325,206 @@
       document.getElementById('placeSearch').value = '';
       await enablePinPick();
     });
+
+    // ===== AI 추천 모달 =====
+    const aiBtn = document.getElementById('aiSuggestBtn');
+    const aiModal = document.getElementById('aiSuggestModal');
+    const aiCloseBtn = document.getElementById('aiCloseBtn');
+    const aiRunBtn = document.getElementById('aiRunBtn');
+    const aiModeTabs = document.querySelectorAll('[data-ai-mode]');
+    const aiThemeSelect = document.getElementById('aiTheme');
+    const aiKeywords = document.getElementById('aiKeywords');
+    const aiPointsList = document.getElementById('aiPointsList');
+    const aiPointsLabel = document.getElementById('aiPointsLabel');
+    const aiAddPointBtn = document.getElementById('aiAddPointBtn');
+    const aiResults = document.getElementById('aiResults');
+    let aiMode = 'origin'; // origin or home
+
+    function addPointRow(initial = '') {
+      const id = `p_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+      const row = document.createElement('div');
+      row.className = 'card-sm';
+      row.dataset.pid = id;
+      row.innerHTML = `
+        <div class="input-row">
+          <input class="input" placeholder="${aiMode === 'home' ? '귀가지 입력' : '출발지 입력'}" value="${initial}">
+          <button class="btn btn-secondary btn-sm">검색</button>
+          <button class="btn btn-secondary btn-sm">삭제</button>
+        </div>
+        <div class="text-xs text-muted" style="margin-top:6px" data-selected></div>
+        <div class="place-results hidden" data-results></div>
+      `;
+      const [inputEl, searchBtn, delBtn] = row.querySelectorAll('input,button');
+      const selectedEl = row.querySelector('[data-selected]');
+      const resultsEl = row.querySelector('[data-results]');
+
+      async function doSearch() {
+        const q = inputEl.value.trim();
+        if (!q) { showToast('장소를 입력하세요', 'error'); return; }
+        searchBtn.textContent = '...';
+        try {
+          const res = await fetch(`${WORKER_URL}/api/search-places?q=${encodeURIComponent(q)}`);
+          const data = await res.json();
+          const results = data.results || [];
+          if (!results.length) {
+            resultsEl.innerHTML = '<div class="text-sm text-muted" style="padding:8px">결과가 없습니다.</div>';
+            resultsEl.classList.remove('hidden');
+            return;
+          }
+          resultsEl.innerHTML = results.slice(0, 6).map((r, i) => `
+            <div class="place-result-item" data-i="${i}">
+              <div class="place-result-info">
+                <div class="place-result-name">${r.name}</div>
+                <div class="place-result-addr">${r.address}</div>
+              </div>
+            </div>`).join('');
+          resultsEl.classList.remove('hidden');
+          resultsEl.querySelectorAll('.place-result-item').forEach(item => {
+            item.addEventListener('click', () => {
+              const idx = parseInt(item.dataset.i, 10);
+              const r = results[idx];
+              row.dataset.lat = r.lat;
+              row.dataset.lng = r.lng;
+              row.dataset.name = r.name;
+              row.dataset.address = r.address;
+              selectedEl.textContent = `선택됨: ${r.name} · ${r.address}`;
+              resultsEl.classList.add('hidden');
+            });
+          });
+        } catch (e) {
+          showToast('검색 실패: ' + e.message, 'error');
+        } finally {
+          searchBtn.textContent = '검색';
+        }
+      }
+
+      searchBtn.addEventListener('click', doSearch);
+      inputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') doSearch();
+      });
+      delBtn.addEventListener('click', () => row.remove());
+      aiPointsList.appendChild(row);
+    }
+
+    function getPoints() {
+      const rows = [...aiPointsList.querySelectorAll('[data-pid]')];
+      return rows.map(r => ({
+        lat: parseFloat(r.dataset.lat),
+        lng: parseFloat(r.dataset.lng),
+        name: r.dataset.name,
+        address: r.dataset.address,
+      })).filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+    }
+
+    function setMode(mode) {
+      aiMode = mode;
+      aiModeTabs.forEach(t => t.classList.toggle('selected', t.dataset.aiMode === mode));
+      aiPointsLabel.textContent = (aiMode === 'home' ? '귀가지' : '출발지') + ' 2개 이상 입력';
+      aiPointsList.querySelectorAll('input').forEach(i => {
+        i.placeholder = aiMode === 'home' ? '귀가지 입력' : '출발지 입력';
+      });
+    }
+
+    aiModeTabs.forEach(t => t.addEventListener('click', () => setMode(t.dataset.aiMode)));
+    aiBtn.addEventListener('click', () => {
+      aiResults.innerHTML = '';
+      if (!aiPointsList.children.length) {
+        addPointRow();
+        addPointRow();
+      }
+      aiModal.classList.remove('hidden');
+    });
+    aiCloseBtn.addEventListener('click', () => aiModal.classList.add('hidden'));
+    aiAddPointBtn.addEventListener('click', () => addPointRow());
+
+    function themeQuery(theme, keywords) {
+      const base = {
+        meal: '맛집 식사',
+        drink: '술집 바',
+        cafe: '카페 디저트',
+        etc: '',
+      }[theme] || '';
+      return `${base} ${keywords || ''}`.trim();
+    }
+
+    async function recommendPlaces() {
+      const points = getPoints();
+      if (points.length < 2) {
+        const label = aiMode === 'home' ? '귀가지' : '출발지';
+        showToast(`${label} 2개 이상을 선택하세요`, 'error');
+        return;
+      }
+      const centroid = points.reduce((acc, p) => ({ lat: acc.lat + p.lat, lng: acc.lng + p.lng }), { lat: 0, lng: 0 });
+      centroid.lat /= points.length;
+      centroid.lng /= points.length;
+
+      const query = themeQuery(aiThemeSelect.value, aiKeywords.value.trim());
+      if (!query) { showToast('테마/키워드를 입력하세요', 'error'); return; }
+
+      aiRunBtn.disabled = true;
+      aiRunBtn.textContent = '추천 중...';
+      aiResults.innerHTML = '';
+
+      try {
+        const res = await fetch(`${WORKER_URL}/api/search-places?q=${encodeURIComponent(query)}&lat=${centroid.lat}&lng=${centroid.lng}&radius=2000`);
+        const data = await res.json();
+        const candidates = (data.results || []).slice(0, 6);
+        if (!candidates.length) {
+          aiResults.innerHTML = '<div class="text-sm text-muted">추천 결과가 없습니다.</div>';
+          return;
+        }
+
+        const scored = [];
+        for (const c of candidates) {
+          const times = [];
+          for (const p of points.slice(0, 5)) {
+            const etaRes = await fetch(`${WORKER_URL}/api/transit-eta?origin_lat=${p.lat}&origin_lng=${p.lng}&dest_lat=${c.lat}&dest_lng=${c.lng}`);
+            const eta = await etaRes.json();
+            if (!eta.minutes) { times.length = 0; break; }
+            times.push(eta.minutes);
+          }
+          if (!times.length) continue;
+          const avg = times.reduce((a,b)=>a+b,0) / times.length;
+          const std = Math.sqrt(times.reduce((a,b)=>a+(b-avg)*(b-avg),0) / times.length);
+          const score = avg + std * 0.7;
+          scored.push({ c, avg, std, score, min: Math.min(...times), max: Math.max(...times) });
+        }
+        scored.sort((a,b)=>a.score-b.score);
+
+        aiResults.innerHTML = scored.map(s => `
+          <div class="place-result-item" data-lat="${s.c.lat}" data-lng="${s.c.lng}" data-name="${s.c.name}" data-addr="${s.c.address}">
+            <div class="place-result-info">
+              <div class="place-result-name">${s.c.name}</div>
+              <div class="place-result-addr">${s.c.address}</div>
+              <div class="text-xs text-muted">평균 ${Math.round(s.avg)}분 · 편차 ${Math.round(s.std)}분 · 범위 ${s.min}-${s.max}분</div>
+            </div>
+          </div>`).join('');
+        if (!scored.length) {
+          aiResults.innerHTML = '<div class="text-sm text-muted">추천 결과가 없습니다.</div>';
+        }
+
+        aiResults.querySelectorAll('.place-result-item').forEach(item => {
+          item.addEventListener('click', async () => {
+            const place = {
+              name: item.dataset.name,
+              address: item.dataset.addr,
+              lat: parseFloat(item.dataset.lat),
+              lng: parseFloat(item.dataset.lng),
+            };
+            await selectPlace(place);
+            aiModal.classList.add('hidden');
+            showToast('추천 장소가 선택되었습니다', 'success');
+          });
+        });
+      } catch (e) {
+        showToast('추천 실패: ' + e.message, 'error');
+      } finally {
+        aiRunBtn.disabled = false;
+        aiRunBtn.textContent = '추천하기';
+      }
+    }
+
+    aiRunBtn.addEventListener('click', recommendPlaces);
 
     // 친구 목록 로드 (검색/그룹 필터)
     const friendList = document.getElementById('friendCheckList');
