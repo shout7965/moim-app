@@ -553,7 +553,7 @@
               <div class="place-result-name">${s.c.name}</div>
               <div class="place-result-addr">${s.c.address}</div>
               <div class="text-xs text-muted">이동시간 범위 ${s.min}-${s.max}분</div>
-              <div class="text-xs text-muted">${descLine}</div>
+              <div class="text-xs text-muted">${s.c.category || descLine}</div>
             </div>
           </div>`).join('');
         const top = scored.slice(0, defaultCount);

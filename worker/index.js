@@ -268,6 +268,7 @@ async function handleSearchPlaces(request, env) {
     lat:     parseFloat(d.y),
     lng:     parseFloat(d.x),
     id:      d.id,
+    category: d.category_name || null,
   }));
 
   return json({ results });
