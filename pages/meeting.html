@@ -363,9 +363,6 @@
         showToast(msg, 'info');
       };
 
-      // 내 상태 UI
-      renderMyStatus();
-
       // 참여자 목록 구독 (멤버/호스트만)
       let membersSubscribed = false;
       let activeAtUpdating = false;
@@ -440,6 +437,9 @@
           el.textContent = `약속까지 ${formatCountdown(left)} 남음`;
         }
       }
+
+      // 내 상태 UI (countdownTimer 정의 이후 호출)
+      renderMyStatus();
 
       function ensureMemberSubscription() {
         if (membersSubscribed) return;
