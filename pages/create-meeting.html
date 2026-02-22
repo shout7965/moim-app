@@ -162,10 +162,29 @@
       return new Date(Date.UTC(y, m - 1, day, hh - 9, mm));
     };
 
+    function toInputLocalValue(d) {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function setDefaultDateTime() {
+      const input = document.getElementById('dateTimeInput');
+      if (!input || input.value) return;
+      const now = new Date();
+      const rounded = new Date(now);
+      const m = rounded.getMinutes();
+      const add = (10 - (m % 10)) % 10;
+      rounded.setMinutes(m + add, 0, 0);
+      if (rounded.getTime() < now.getTime()) rounded.setMinutes(rounded.getMinutes() + 10, 0, 0);
+      input.value = toInputLocalValue(rounded);
+    }
+
     try {
       const s = await requireAuth();
       myUid = s.user.uid; myProfile = s.profile;
     } catch { location.href = '/index.html'; }
+
+    setDefaultDateTime();
 
     function toLocalInputValue(date) {
       const d = date instanceof Date ? date : new Date(date);
