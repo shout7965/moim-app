@@ -69,6 +69,11 @@
       <!-- 친구 초대 -->
       <div class="input-group" style="margin-top:4px">
         <label class="input-label">친구 초대 <span class="text-muted">(선택)</span></label>
+        <div class="input-row" style="margin-bottom:8px">
+          <input class="input" id="friendSearchInput" placeholder="친구 검색 (닉네임/코드)" />
+        </div>
+        <div id="friendGroupChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
+        <div class="text-xs text-muted" id="friendCount" style="margin-bottom:6px"></div>
         <div id="friendCheckList">
           <div class="text-sm text-muted">친구를 먼저 추가하세요 →
             <a href="/pages/friends.html" style="color:var(--accent2)">친구 관리</a>
@@ -291,13 +296,69 @@
       await enablePinPick();
     });
 
-    // 친구 목록 로드
-    const friends = await getFriends(myProfile.friends || []);
+    // 친구 목록 로드 (검색/그룹 필터)
     const friendList = document.getElementById('friendCheckList');
-    if (friends.length) {
-      friendList.innerHTML = friends.map(f => `
-        <div class="friend-check-item" data-uid="${f.uid}">
-          <div class="avatar">${f.profileImg ? `<img src="${f.profileImg}">` : f.nickname[0]}</div>
+    const friendSearchInput = document.getElementById('friendSearchInput');
+    const friendGroupChips  = document.getElementById('friendGroupChips');
+    const friendCountEl     = document.getElementById('friendCount');
+    const friendGroups = Array.isArray(myProfile.friendGroups) ? myProfile.friendGroups : [];
+    let selectedGroupId = 'all';
+    let allFriends = await getFriends(myProfile.friends || []);
+
+    function renderGroupChips() {
+      if (!friendGroups.length) {
+        friendGroupChips.innerHTML = '<div class="badge badge-gray selected" data-gid="all" style="cursor:pointer">전체</div>';
+        friendGroupChips.querySelector('[data-gid="all"]').addEventListener('click', () => {
+          selectedGroupId = 'all';
+          renderGroupChips();
+          renderFriendList();
+        });
+        return;
+      }
+      friendGroupChips.innerHTML = [
+        `<div class="badge badge-gray ${selectedGroupId === 'all' ? 'selected' : ''}" data-gid="all" style="cursor:pointer">전체</div>`,
+        ...friendGroups.map(g => `
+          <div class="badge badge-gray ${selectedGroupId === g.id ? 'selected' : ''}" data-gid="${g.id}" style="cursor:pointer">
+            ${g.name} <span class="text-xs text-muted">(${(g.memberUids || []).length})</span>
+          </div>
+        `),
+      ].join('');
+      friendGroupChips.querySelectorAll('[data-gid]').forEach(chip => {
+        chip.addEventListener('click', () => {
+          selectedGroupId = chip.dataset.gid;
+          renderGroupChips();
+          renderFriendList();
+        });
+      });
+    }
+
+    function renderFriendList() {
+      const q = friendSearchInput.value.trim().toLowerCase();
+      let filtered = allFriends;
+      if (selectedGroupId !== 'all') {
+        const group = friendGroups.find(g => g.id === selectedGroupId);
+        const set = new Set(group?.memberUids || []);
+        filtered = filtered.filter(f => set.has(f.uid));
+      }
+      if (q) {
+        filtered = filtered.filter(f =>
+          (f.nickname || '').toLowerCase().includes(q) ||
+          (f.inviteCode || '').toLowerCase().includes(q)
+        );
+      }
+      friendCountEl.textContent = `(${filtered.length}/${allFriends.length})`;
+
+      if (!filtered.length) {
+        friendList.innerHTML = `
+          <div class="text-sm text-muted">
+            ${allFriends.length ? '조건에 맞는 친구가 없습니다.' : '친구를 먼저 추가하세요 → '}
+            ${allFriends.length ? '' : '<a href="/pages/friends.html" style="color:var(--accent2)">친구 관리</a>'}
+          </div>`;
+        return;
+      }
+      friendList.innerHTML = filtered.map(f => `
+        <div class="friend-check-item ${selectedFriends.has(f.uid) ? 'selected' : ''}" data-uid="${f.uid}">
+          <div class="avatar">${f.profileImg ? `<img src="${f.profileImg}">` : f.nickname?.[0] || '?'}</div>
           <span class="text-sm font-bold">${f.nickname}</span>
         </div>`).join('');
 
@@ -314,6 +375,10 @@
         });
       });
     }
+
+    friendSearchInput.addEventListener('input', renderFriendList);
+    renderGroupChips();
+    renderFriendList();
 
     // 약속 만들기
     document.getElementById('createBtn').addEventListener('click', async () => {
