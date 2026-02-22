@@ -69,8 +69,23 @@
       <button class="btn btn-success" style="flex:1" id="arrivedBtn">
         ✅ 도착 완료
       </button>
-      <button class="btn btn-secondary btn-sm" id="routeBtn" title="경로 표시">🧭</button>
-      <button class="btn btn-secondary btn-sm" id="centerBtn" title="내 위치로">🎯</button>
+      <button class="btn btn-secondary btn-sm" id="routeBtn" title="경로 표시">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <path d="M3 6c4 0 6 4 9 4s5-4 9-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path d="M3 12c4 0 6 4 9 4s5-4 9-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path d="M3 18c4 0 6 4 9 4s5-4 9-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <button class="btn btn-secondary btn-sm" id="centerBtn" title="내 위치로">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
+          <circle cx="12" cy="12" r="1.6" fill="currentColor"/>
+          <line x1="12" y1="2" x2="12" y2="5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <line x1="12" y1="19" x2="12" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <line x1="2" y1="12" x2="5" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <line x1="19" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
     </div>
   </div>
 
@@ -187,7 +202,7 @@
         return `
           <div class="member-eta-card">
             <div class="avatar" style="flex-shrink:0;${m.status === 'invited' || !m.lat ? 'opacity:0.5' : ''}">
-              ${m.profileImg ? `<img src="${m.profileImg}">` : (m.nickname?.[0] || '?')}
+              ${m.profileImg ? `<img src="${m.profileImg.replace(/^http:\\/\\//i,'https://')}">` : (m.nickname?.[0] || '?')}
             </div>
             <div class="member-eta-info">
               <div class="member-eta-name">${m.nickname}${isMe ? ' (나)' : ''}</div>
