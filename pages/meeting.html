@@ -426,8 +426,9 @@
           return;
         }
 
-        if (meeting.activeAt) {
-          const at = meeting.activeAt.toDate ? meeting.activeAt.toDate() : new Date(meeting.activeAt);
+        const targetAt = meeting.activeAt || meeting.scheduledAt;
+        if (targetAt) {
+          const at = targetAt.toDate ? targetAt.toDate() : new Date(targetAt);
           const left = at.getTime() - Date.now();
           btn.textContent = `⏳ 시작까지 ${formatCountdown(left)} (위치확인)`;
           btn.disabled = false;
@@ -440,16 +441,17 @@
 
         if (!trackingTimer) {
           trackingTimer = setInterval(() => {
-            if (!meeting.activeAt) return;
-            if (isActiveNow()) {
-              btn.textContent = '📍 실시간 위치 공유/조회';
-              return;
-            }
-            const at = meeting.activeAt.toDate ? meeting.activeAt.toDate() : new Date(meeting.activeAt);
-            const left = at.getTime() - Date.now();
-            btn.textContent = `⏳ 시작까지 ${formatCountdown(left)} (위치확인)`;
-          }, 1000);
-        }
+          if (isActiveNow()) {
+            btn.textContent = '📍 실시간 위치 공유/조회';
+            return;
+          }
+          const targetAt = meeting.activeAt || meeting.scheduledAt;
+          if (!targetAt) return;
+          const at = targetAt.toDate ? targetAt.toDate() : new Date(targetAt);
+          const left = at.getTime() - Date.now();
+          btn.textContent = `⏳ 시작까지 ${formatCountdown(left)} (위치확인)`;
+        }, 1000);
+      }
       }
 
       function ensureMemberSubscription() {
